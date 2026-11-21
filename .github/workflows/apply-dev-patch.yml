@@ -1,0 +1,50 @@
+
+name: Apply reviewed patch (development branch only)
+
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - 'mapleweb-agents-dev-2026-11-21-v5.patch'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-dev-patch
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mapleweb-ai-agents
+          fetch-depth: 0
+
+      - name: Check the patch is exactly the reviewed file
+        run: echo "e35e3e84c608eb1c08205c8d62944329ac0644ad423b57c4b0acbb45d07e80d7  mapleweb-agents-dev-2026-11-21-v5.patch" | sha256sum -c -
+
+      - name: Apply the patch to the index
+        run: |
+          git apply --check mapleweb-agents-dev-2026-11-21-v5.patch
+          git apply --index mapleweb-agents-dev-2026-11-21-v5.patch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install and run every test
+        run: |
+          npm install --no-audit --no-fund
+          npm run -s test:all
+
+      - name: Commit and push to development branch only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Apply reviewed v5 patch (checksum verified, all tests passed)"
+          git push origin HEAD:refs/heads/mapleweb-ai-agents
