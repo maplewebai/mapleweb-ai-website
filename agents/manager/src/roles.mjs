@@ -1,4 +1,5 @@
 // MapleWeb AI: eight deterministic, staging-only roles. No paid model is called.
+import {draftSalesEmail} from './sales-email.mjs';
 export const ROLES = Object.freeze([
   'website-developer','customer-care','sales','research',
   'quality-checker','support','finance','publishing',
@@ -28,6 +29,8 @@ export function runRole(role,action,input={},context={}) {
       return {status:'REVISION_REQUESTED',agent:role,approvalInvalidated:true,note:val(input,'note',250)};
     case 'customer-care/intake':
       return {status:'DRAFT_ONLY',agent:role,message:'Thanks for contacting MapleWeb AI. What is the business type, website goal, and preferred features?',sent:false};
+    case 'sales/draft-email':
+      return draftSalesEmail(input);
     case 'sales/quote': {
       const tier=Number(input.tier);
       if (!Number.isInteger(tier)||tier<1||tier>6) error('Choose an approved tier 1–6');
