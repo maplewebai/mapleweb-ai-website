@@ -1,5 +1,8 @@
 # MapleWeb AI — One-path Cloudflare staging activation runbook
 
+> **SUPERSEDED — MapleWeb AI 2.0 (2026-11-22):** This nine-Worker staging activation runbook is retained for reference only. Do **not** complete the old eight-role Cloudflare setup or provision its five secrets and three variables. The owner has chosen a simplified Kimi Build architecture, documented in [MAPLEWEB_KIMI_LEAN_V2_PLAN.md](MAPLEWEB_KIMI_LEAN_V2_PLAN.md). The old deployment workflow has been made inert on `mapleweb-ai-agents`; new staging deployment requires a separately approved one-Manager plan. No live Kimi integration is connected.
+
+
 **Owner goal:** deploy and verify one Website Manager + eight role Workers, with a dedicated staging D1, using GitHub Actions and the existing Cloudflare Workers Free account.
 
 **Status (2026-11-22):** Source and guarded workflows exist on `mapleweb-ai-agents`. Previous tests passed (Manager 48/48; roles 22/22; nine generated staging configs). GitHub Actions secrets were empty in the owner's 2026-11-22 screenshot. Cloudflare Workers Scripts Edit and D1 Edit were verified on an **older** token; the owner has begun configuring a **new** scoped token but it is **not yet confirmed created or saved in GitHub**. The staging D1 name/UUID and final Cloudflare account must be verified. **0/9 live services confirmed.**
