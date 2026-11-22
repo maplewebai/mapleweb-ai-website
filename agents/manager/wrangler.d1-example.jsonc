@@ -1,0 +1,12 @@
+{
+  "name": "mapleweb-manager-rebuilt-staging",
+  "main": "./src/worker.mjs",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "vars": { "MODE": "staging" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "mapleweb-manager-staging-db",
+      "database_id": "REPLACE_WITH_VERIFIED_STAGING_D1_DATABASE_ID",
+      "migrations_dir": "./migrations" }
+  ]
+}
