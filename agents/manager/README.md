@@ -1,19 +1,38 @@
-# MapleWeb AI — Manager staging rebuild (upload in progress)
+# MapleWeb AI — Website Manager staging rebuild
 
-This folder is for the **development branch only**: `mapleweb-ai-agents`.
+**GitHub write access: VERIFIED.** The rebuilt Manager source and tests have been uploaded to the `mapleweb-ai-agents` **development branch only**. The public `main` branch has not been modified by this upload.
 
-**Current status (2026-11-21):** The repository's GitHub App write access is now working. The Manager source upload has **not yet finished**. This folder is **not deployable** until the remainder of the source and tests from the reviewed package are committed and pass in CI.
+## What is uploaded
+- `src/worker.mjs` — owner-authenticated staging Manager API (no public deploy or payment routes)
+- `src/roles.mjs` — eight deterministic staging agent functions, not remotely deployed AI models
+- `src/security.mjs` — staging authorization and request validation
+- `src/store.mjs` and `migrations/0001_init.sql` — isolated staging storage
+- `src/github.mjs` — GitHub integration, constrained to development branch
+- `src/cloudflare.mjs` — Cloudflare diagnostics and role health checks
+- `tests/manager.test.mjs` — 38 local tests
+- `wrangler.jsonc` and `wrangler.d1-example.jsonc` — isolated staging Worker configuration
+- `.github/workflows/test-manager-rebuild.yml` — GitHub Actions tests only, no automatic deployments
+- `docs/ACTIVATION_GATES.md` and `docs/MANAGER_GITHUB_WORK_ORDER.md` — deployment and handoff checks
 
-Verified source package: https://drive.google.com/file/d/1wjiDklKZhaW1kY_phkIfTbdOdV0XwEC8/view
-GitHub Agent issue: https://github.com/maplewebai/mapleweb-ai-website/issues/6
+Original saved source bundle: https://drive.google.com/file/d/1wjiDklKZhaW1kY_phkIfTbdOdV0XwEC8/view
+Manager/GitHub Agent task: https://github.com/maplewebai/mapleweb-ai-website/issues/6
 
-To finish:
-1. Review the development branch against any existing M7/v5 implementation and do not overwrite unreviewed work.
-2. Upload the complete `agents/manager/**` source files from the reviewed archive.
-3. Run `cd agents/manager && npm test && npm run check`, record logs and commit SHA.
-4. Deploy to an **isolated staging Cloudflare Worker** only after identity and authorization checks. Verify health and data isolation.
-5. Treat eight roles as deterministic staging features until distinct live endpoints and models are explicitly deployed and tested.
+## Test status
+The original rebuilt package was tested with Node 22: **38/38 tests passed** and syntax check passed. Application source and tests have been read back from GitHub with the expected byte sizes. **GitHub Actions run results are not yet verified.**
 
-**Forbidden without explicit owner approval:** changing `main`, touching the existing public Worker, spending money, activating real payments, or publishing customer websites.
+To test:
+```sh
+cd agents/manager
+npm test
+npm run check
+```
 
-No GitHub permission check alone proves that the Manager or eight agents are live.
+## Remaining activation steps
+1. Confirm the GitHub Actions test result and any fixes required.
+2. Reconcile older v5/M7 developer source without overwriting or assuming it is integrated.
+3. Verify the intended Cloudflare account and an approved no-cost isolated staging resource.
+4. Configure staging D1 and secrets **in the authorized account**, never in GitHub.
+5. Deploy and test the new `mapleweb-manager-rebuilt-staging` Worker separately.
+6. Connect and health-test eight distinct live agent services before reporting agents active.
+
+**No verified live Worker has been deployed by this change. No generative AI services, real payments, production publishing, or customer site publishing are activated.**
