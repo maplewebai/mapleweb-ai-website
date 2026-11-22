@@ -34,6 +34,44 @@ export function runRole(role,action,input={},context={}) {
       return {status:'OWNER_REVIEW_REQUIRED',agent:role,tier,
         priceRangeCAD:PRICES_CAD[tier-1],tax:'NOT_CALCULATED',invoiceCreated:false,paymentCharged:false};
     }
+    case 'sales/prepare-order': {
+      // Synthetic sales handoff only. This cannot accept contact details, create
+      // a customer account, publish a site, issue an invoice or trigger Kimi.
+      if (input.fictional !== true) error('Fictional test order required');
+      const tier=Number(input.tier);
+      if (!Number.isInteger(tier)||tier<1||tier>6) error('Choose an approved tier 1–6');
+      const business=val(input,'business',80),goal=val(input,'goal',450);
+      if (business.length<3 || goal.length<10) error('Fictional business and website goal required');
+      const features=input.features===undefined?[]:input.features;
+      if (!Array.isArray(features)||features.length>8||
+        features.some(x=>typeof x!=='string'||x.trim().length<2||x.length>100))
+        error('Provide up to eight short fictional website features');
+      const combined=[business,goal,...features].join(' ');
+      if (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(combined) ||
+        /(?:\+?\d[ .()-]*){10,}/.test(combined))
+        error('Contact details are prohibited in staging');
+      return {status:'DRAFT_ORDER_NOT_SUBMITTED',agent:role,
+        package:['Simple','Simple','Professional','Professional','Advanced','Advanced'][tier-1],
+        tier,priceRangeCAD:PRICES_CAD[tier-1],
+        scope:{business:escape(business),goal:escape(goal),features:features.map(x=>escape(x.trim()))},
+        exactQuoteAgreed:false,consentVerified:false,customerAccountCreated:false,
+        kimiBuildTriggered:false,realOrderCreated:false,invoiceCreated:false,
+        paymentCharged:false,publicationAuthorized:false,
+        nextStep:'Owner must review scope and fixed quote; no customer transaction or live action'};
+    }
+    case 'sales/trial-terms':
+      // Informational policy proposal, never a permission to deploy or suspend.
+      return {status:'PROPOSED_TERMS_ONLY',agent:role,
+        standardTrialHours:24,optionalExpressTrialHours:4,
+        paymentDeadlineHoursAfterVerifiedGoLive:24,
+        deadlineStartsAt:'successful trial publication, not draft creation',
+        customerAndOwnerApprovalRequired:true,writtenCustomerConsentRequired:true,
+        nonpaymentReminderSuggestedAtHour:20,
+        suspensionRequiresSeparateVerifiedOwnerApproval:true,
+        autoSuspendOnNonpayment:false,trialPublicationEnabled:false,
+        realInvoicesEnabled:false,paymentsEnabled:false,
+        headquartersMayBeTakenOfflineAutomatically:false,
+        note:'No site may be published or suspended by this response. Real actions need separate authorization and verified integrations'};
     case 'research/plan':
       return {status:'RESEARCH_PLAN_ONLY',agent:role,sector:val(input,'sector',70)||'local business',
         area:val(input,'area',70)||'Toronto',scrapedContacts:0,messagesSent:0,
