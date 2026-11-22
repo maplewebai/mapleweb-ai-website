@@ -21,6 +21,8 @@ jobs:
         run: node --check demo/engine.js
       - name: Test business workflow, publishing guards, sales and support
         run: node --test demo/business.test.cjs
+      - name: Browser smoke test when Chrome is available
+        run: node --test demo/ui-smoke.test.cjs
       - name: Confirm demo never deploys or collects payments
         run: |
           echo "Demo-only tests. No Kimi API, phone calls, customer data, payments, Cloudflare or production publishing." >> "$GITHUB_STEP_SUMMARY"
