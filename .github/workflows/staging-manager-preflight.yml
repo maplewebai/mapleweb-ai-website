@@ -1,0 +1,82 @@
+name: Check MapleWeb Manager Cloudflare staging readiness (NO DEPLOY)
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - '.github/workflows/staging-manager-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mapleweb-ai-agents
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check Manager tests and syntax
+        run: |
+          npm test
+          npm run check
+        working-directory: agents/manager
+
+      - name: Check Cloudflare staging credential readiness without deploying
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_EXPECTED: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+          OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+          STAGING_D1_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          check() {
+            local label="$1" value="$2"
+            if [ -z "$value" ]; then
+              echo "::warning::Staging prerequisite missing: $label"
+              missing=1
+            else
+              echo "Configured: $label"
+            fi
+          }
+          check "CLOUDFLARE_API_TOKEN" "$CF_TOKEN"
+          check "CLOUDFLARE_ACCOUNT_ID" "$CF_ACCOUNT"
+          check "MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID (repository variable)" "$CF_EXPECTED"
+          check "MAPLEWEB_STAGING_OWNER_TOKEN (>=32 chars)" "$OWNER_TOKEN"
+          check "MAPLEWEB_STAGING_D1_DATABASE_ID (separate verified staging DB)" "$STAGING_D1_ID"
+          if [ "${#OWNER_TOKEN}" -gt 0 ] && [ "${#OWNER_TOKEN}" -lt 32 ]; then
+            echo "::error::Owner token must have at least 32 characters"
+            missing=1
+          fi
+          if [ -n "$CF_ACCOUNT" ] && [ -n "$CF_EXPECTED" ] && [ "$CF_ACCOUNT" != "$CF_EXPECTED" ]; then
+            echo "::error::Cloudflare account mismatch; refusing staging deployment"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "No Cloudflare deployment performed; complete staging credentials and account verification first."
+            exit 1
+          fi
+          echo "Staging credentials present; verifying token can access the expected account..."
+          status=$(curl -sS -o /tmp/cloudflare-account-response.json -w '%{http_code}' \
+            --connect-timeout 10 --max-time 20 \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT")
+          if [ "$status" != "200" ]; then
+            echo "::error::Cloudflare account authentication failed (HTTP $status)"
+            exit 1
+          fi
+          jq -e --arg id "$CF_ACCOUNT" '.success == true and .result.id == $id' /tmp/cloudflare-account-response.json >/dev/null || {
+            echo "::error::Unexpected Cloudflare account identity"
+            exit 1
+          }
+          echo "Cloudflare staging preflight passed. This workflow never deploys."
+          echo "### Cloudflare staging preflight: READY FOR SEPARATE OWNER-APPROVED DEPLOYMENT" >> "$GITHUB_STEP_SUMMARY"
