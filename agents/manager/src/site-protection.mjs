@@ -17,3 +17,16 @@ export function rejectHeadquartersAvailabilityChange(action) {
     throw bad('Unknown headquarters availability action',400);
   throw bad('MapleWeb AI Headquarters is protected: separate, verified owner approval is required; automatic shutdown is forbidden',403);
 }
+
+/**
+ * Customer sites must not be suspended merely because the invoice is overdue.
+ * This staging-only hard stop remains in effect until a real, independently
+ * verified owner-approval flow exists. It must verify a single project, domain,
+ * action and short expiry, check payment/dispute state again, and leave HQ and
+ * other customers untouched. There is deliberately no "approved" bypass here.
+ */
+export function rejectUnapprovedCustomerSuspension(action) {
+  if (typeof action!=='string' || !HQ_DISRUPTIVE_ACTIONS.includes(action))
+    throw bad('Unknown customer availability action',400);
+  throw bad('Customer trial remains online: separate verified owner approval is required before suspension or offline actions',403);
+}
