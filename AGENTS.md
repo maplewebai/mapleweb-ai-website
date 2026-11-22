@@ -1,5 +1,8 @@
 # MapleWeb AI — Agent Development Instructions
 
+> **ACTIVE ARCHITECTURE UPDATE (2026-11-22):** MapleWeb AI 2.0 adopts Kimi Build/Kimi K3 as the proposed website creation engine and a single Manager app. Read [the lean Kimi plan](docs/MAPLEWEB_KIMI_LEAN_V2_PLAN.md) first. Legacy eight role Worker code remains only as a reference/rollback; do not deploy nine Workers. This does not authorize Kimi API spend, payments, real-customer data processing, or production publishing. All original safety rules below remain mandatory.
+
+
 This file guides development of the **Website Manager** and **Website Developer** for MapleWeb AI.
 
 ## Environment and status
