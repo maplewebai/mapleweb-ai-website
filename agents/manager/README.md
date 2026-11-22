@@ -27,6 +27,54 @@ npm test
 npm run check
 ```
 
+## Sales Agent staging work (synthetic only)
+
+The Manager now accepts two Sales Agent job actions through its owner-authenticated
+`POST /api/jobs` staging endpoint. The same actions work through the deterministic
+`runRole('sales', ...)` module. **These are not live AI conversations.**
+
+**Fictional order handoff:**
+```json
+{
+  "synthetic": true,
+  "projectId": "TESTSALES1",
+  "role": "sales",
+  "action": "prepare-order",
+  "input": {
+    "fictional": true,
+    "tier": 4,
+    "business": "Fictional Maple Cafe",
+    "goal": "Create a sample cafe site with menu and business hours",
+    "features": ["Menu", "Photo gallery", "Contact page"]
+  }
+}
+```
+
+Output includes the package, approved CAD planning range, escaped fictional scope,
+and explicit flags showing that no fixed-price quote, real customer order,
+Kimi build, invoice, payment, or publication has occurred. Contact information
+and non-fictional orders are rejected.
+
+**Trial and nonpayment policy (proposal only):**
+```json
+{
+  "synthetic": true,
+  "projectId": "TESTSALES1",
+  "role": "sales",
+  "action": "trial-terms",
+  "input": {}
+}
+```
+
+The response states the proposed 24-hour trial, optional 4-hour express viewing
+period, payment deadline measured from successful publication, and the required
+**separate verified owner approval before suspension**. This is guidance only:
+it cannot publish, contact a customer, charge, invoice, suspend, or change HQ.
+
+New tests: `tests/sales.test.mjs`. Run `npm test` from `agents/manager`.
+GitHub Actions workflow `test-manager-rebuild.yml` tests development
+branch changes without deploying to Cloudflare.
+
 ## Remaining activation steps
 1. Confirm the GitHub Actions test result and any fixes required.
 2. Reconcile older v5/M7 developer source without overwriting or assuming it is integrated.
