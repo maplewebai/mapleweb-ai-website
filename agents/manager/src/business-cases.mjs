@@ -3,6 +3,7 @@
 // Customer PII, credentials, communication, AI spend, and publishing are excluded.
 import {PRICES_CAD} from './roles.mjs';
 import {bad,idIsSafe} from './security.mjs';
+import {normalizeWebsiteRequirements} from './order-requirements.mjs';
 
 export const CASE_STAGES = Object.freeze([
   'NEW_REQUEST','QUOTE_PENDING','QUOTE_READY','AWAITING_ACCEPTANCE',
@@ -20,17 +21,22 @@ export function newBusinessCase(input){
   requireCaseInput(input,['caseId']);
   if(!idIsSafe(input.caseId))throw bad('A safe case ID is required');
   return {caseId:input.caseId,revision:1,stage:'NEW_REQUEST',
-    quote:null,contactAllowed:false,clientAcceptanceVerified:false,
+    quote:null,requirements:null,contactAllowed:false,clientAcceptanceVerified:false,
     buildAuthorized:false,publicationAuthorized:false,paymentAuthorized:false,
     eventCount:0};
 }
 export function applyOwnerCaseEvent(state,event){
   if(!state || !idIsSafe(state.caseId) || !CASE_STAGES.includes(state.stage) ||
     !Number.isSafeInteger(state.revision)||state.revision<1)throw bad('Invalid stored case');
-  requireCaseInput(event,['type','tier','fixedQuoteCAD']);
+  requireCaseInput(event,['type','tier','fixedQuoteCAD','requirements']);
   const next={...state};
   if(['CLOSED','DO_NOT_CONTACT'].includes(state.stage))throw bad('Closed case cannot be advanced');
   switch(event.type){
+    case 'set-website-requirements':
+      if(!['NEW_REQUEST','QUOTE_PENDING'].includes(state.stage))
+        throw bad('Website requirements locked after the quote is prepared');
+      next.requirements=normalizeWebsiteRequirements(event.requirements);
+      break;
     case 'review-request':
       if(state.stage!=='NEW_REQUEST')throw bad('Request already reviewed');
       next.stage='QUOTE_PENDING';
@@ -65,7 +71,7 @@ export function applyOwnerCaseEvent(state,event){
 }
 export function caseCapabilities(state){
   return {caseId:state.caseId,stage:state.stage,revision:state.revision,
-    quote:state.quote,contactAllowed:false,
+    quote:state.quote,requirements:state.requirements||null,contactAllowed:false,
     clientAcceptanceVerified:false,buildAuthorized:false,
     publicationAuthorized:false,paymentAuthorized:false,
     note:'Real case metadata tracking; customer intake, communications, Kimi build, and publishing are not connected'};
