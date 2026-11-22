@@ -5,6 +5,7 @@ import {bad,readJson,requireOwner,validateSynthetic,idIsSafe} from './security.m
 import {project,saveProject,saveJob,fetchJob,listJobs,audit,requireDb} from './store.mjs';
 import {diagnoseGitHub,createManagerIssue,upsertDevFile,githubConfig} from './github.mjs';
 import {inspectCloudflare,checkRoleHealth} from './cloudflare.mjs';
+import {createKimiModelApi} from './kimi-model-api.mjs';
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
@@ -51,6 +52,12 @@ export async function handle(request,env){
   if(path==='/api/roles'&&request.method==='GET')return json({roles:ROLES,pricesCAD:PRICES_CAD});
   if(path==='/api/integrations/github'&&request.method==='GET')return json(await diagnoseGitHub(env));
   if(path==='/api/integrations/cloudflare'&&request.method==='GET')return json(await inspectCloudflare(env));
+  if(path==='/api/integrations/kimi'&&request.method==='GET')
+    return json(createKimiModelApi(env).status());
+  if(path==='/api/integrations/kimi/synthetic-draft'&&request.method==='POST'){
+    const brief=validateSynthetic(await readJson(request));
+    return json(await createKimiModelApi(env).createSyntheticCodeDraft(brief));
+  }
   if(path==='/api/integrations/agents-health'&&request.method==='GET')return json(await checkRoleHealth(env));
   if(path==='/api/github/create-manager-task'&&request.method==='POST'){
     const p=validateSynthetic(await readJson(request));
