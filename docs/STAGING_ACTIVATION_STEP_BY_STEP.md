@@ -70,6 +70,15 @@ Optional, independently approved secret `MAPLEWEB_MANAGER_GITHUB_TOKEN` for a li
 **Assistant:** Report GitHub branch/commit, deployment workflow URL, actual staging worker URLs, exact live pass/fail results, any missing connections, and account/no-charge safeguards. Mark **staging operational** only on evidence.  
 **Next project (not silently included in this deployment):** Connect generative AI models, complete the Developer M7 integration, customer chat/backend, approval/delivery pipeline and permitted future payments. No real customer publishing or payments before separate authorization.
 
+## Automated safety checks — verified 2026-11-22
+
+- The development-only workflow \`.github/workflows/staging-safe-ci.yml\` now runs automatically on \`mapleweb-ai-agents\` agent-source changes.
+- First verified CI run: https://github.com/maplewebai/mapleweb-ai-website/actions/runs/45055512328 — **SUCCESS** (Manager tests, eight roles tests, five read-only Cloudflare inventory safety tests, nine staging config checks). This **does not** mean Cloudflare Workers are deployed.
+- Read-only Cloudflare account inventory: \`.github/workflows/staging-auto-inventory.yml\`; first run https://github.com/maplewebai/mapleweb-ai-website/actions/runs/45054193373 — tests **5/5 PASS**, Cloudflare discovery **BLOCKED** because GitHub Actions secret \`CLOUDFLARE_API_TOKEN\` is still missing. This is an expected fail-closed condition.
+- \`main\` unchanged at \`cb2ce98dd06c721a89d6287e3e013a86fda1adc1\` when last checked.
+- Next required external action remains secure placement of an authorized, correctly scoped Cloudflare API token in GitHub **Actions** secrets. This chat must not request or receive token contents.
+- No production resources have been changed; **0/9 staging Workers verified live**.
+
 ## Current next action
 
 **Do not start over.** Finish the new scoped Cloudflare token in Chrome. Before creating it, confirm the selected account is not `All accounts` and select only the required permissions. After creation, securely save its value in GitHub **Actions** secret `CLOUDFLARE_API_TOKEN`. Then return to Step 1/3 to verify the staging account/subdomain/D1 values and fill the remaining secure settings.
