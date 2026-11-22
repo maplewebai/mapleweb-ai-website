@@ -6,6 +6,8 @@ import {project,saveProject,saveJob,fetchJob,listJobs,audit,requireDb} from './s
 import {diagnoseGitHub,createManagerIssue,upsertDevFile,githubConfig} from './github.mjs';
 import {inspectCloudflare,checkRoleHealth} from './cloudflare.mjs';
 import {createKimiModelApi} from './kimi-model-api.mjs';
+import {newBusinessCase,applyOwnerCaseEvent,caseCapabilities} from './business-cases.mjs';
+import {readBusinessCase,addBusinessCase,updateBusinessCase,listBusinessCases} from './business-cases-store.mjs';
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
@@ -48,6 +50,43 @@ export async function handle(request,env){
   if(customerAvailability && request.method==='POST'){
     const p=validateSynthetic(await readJson(request));
     rejectUnapprovedCustomerSuspension(p.action);
+  }
+  // Business-case API stores non-personal metadata in a private D1 only.
+  // Explicit opt-in is required even on staging; no customer communications,
+  // Kimi calls, payments, or publishing can be triggered by these routes.
+  if(path==='/api/business/cases'||path.startsWith('/api/business/cases/')){
+    if(env.BUSINESS_CASES_ENABLED!=='true')
+      throw bad('Private business-case operations are not enabled',503);
+    requireDb(env);
+    if(path==='/api/business/cases'&&request.method==='GET')
+      return json({cases:await listBusinessCases(env),externalActionsEnabled:false});
+    if(path==='/api/business/cases'&&request.method==='POST'){
+      const record=newBusinessCase(await readJson(request,2000));
+      await addBusinessCase(env,record);
+      await audit(env.DB,'business-case-created',record.caseId);
+      return json({case:caseCapabilities(record)},201);
+    }
+    const casePath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})$/);
+    if(casePath&&request.method==='GET'){
+      const record=await readBusinessCase(env,casePath[1]);
+      return record?json({case:caseCapabilities(record)}):json({error:'Case not found'},404);
+    }
+    const eventPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/events$/);
+    if(eventPath&&request.method==='POST'){
+      const payload=await readJson(request,2000);
+      if(!Number.isSafeInteger(payload.expectedRevision)||payload.expectedRevision<1)
+        throw bad('Current case revision is required');
+      const existing=await readBusinessCase(env,eventPath[1]);
+      if(!existing)return json({error:'Case not found'},404);
+      if(existing.revision!==payload.expectedRevision)
+        throw bad('Case changed; reload before editing',409);
+      const {expectedRevision,...event}=payload;
+      const updated=applyOwnerCaseEvent(existing,event);
+      await updateBusinessCase(env,existing,updated);
+      await audit(env.DB,'business-case-event',event.type+' on '+existing.caseId);
+      return json({case:caseCapabilities(updated)});
+    }
+    return methodError();
   }
   if(path==='/api/roles'&&request.method==='GET')return json({roles:ROLES,pricesCAD:PRICES_CAD});
   if(path==='/api/integrations/github'&&request.method==='GET')return json(await diagnoseGitHub(env));
