@@ -127,6 +127,37 @@ jobs:
         working-directory: agents/manager
         shell: bash
         run: printf '%s' "$OWNER_TOKEN" | npx wrangler secret put MANAGER_OWNER_TOKEN --name mapleweb-manager-v2-staging
+      - name: Verify live isolated staging endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 10 --max-time 25 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            -o /tmp/mapleweb-workers-subdomain.json
+          subdomain=$(jq -er 'select(.success == true) | .result.subdomain' /tmp/mapleweb-workers-subdomain.json)
+          if ! [[ "$subdomain" =~ ^[a-z0-9-]+$ ]]; then
+            echo "::error::Cannot verify account Workers subdomain"
+            exit 1
+          fi
+          url="https://mapleweb-manager-v2-staging.$subdomain.workers.dev"
+          verified=0
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 15 "$url/health" -o /tmp/mapleweb-manager-health.json &&
+               jq -e '.mode == "staging" and .managerReady == true and .publishingEnabled == false and .paymentsEnabled == false and .roleWorkersVerified == 0' /tmp/mapleweb-manager-health.json >/dev/null &&
+               curl -fsS --max-time 15 --header "Authorization: Bearer $OWNER_TOKEN" "$url/api/status" -o /tmp/mapleweb-manager-status.json &&
+               jq -e '.mode == "staging" and .storageReady == true and .publishEnabled == false and .paymentsEnabled == false and .realCustomerInputAllowed == false' /tmp/mapleweb-manager-status.json >/dev/null; then
+              verified=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$verified" != 1 ]; then
+            echo "::error::Worker deployed but staging health / owner-authenticated status is not verified"
+            exit 1
+          fi
+          echo "Verified isolated Manager staging URL: $url"
+          echo "Verified live staging health, owner auth and disabled publishing/payments: $url" >> "$GITHUB_STEP_SUMMARY"
       - name: Report scope
         if: always()
         run: |
