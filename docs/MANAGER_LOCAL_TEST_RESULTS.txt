@@ -1,0 +1,244 @@
+
+> mapleweb-manager-fresh-rebuild@1.0.0 test
+> node --test tests/*.test.mjs
+
+TAP version 13
+# (node:6207) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Eight distinct roles and six exact approved CAD price ranges
+ok 1 - Eight distinct roles and six exact approved CAD price ranges
+  ---
+  duration_ms: 2.514315
+  type: 'test'
+  ...
+# Subtest: Health does not claim eight live agents
+ok 2 - Health does not claim eight live agents
+  ---
+  duration_ms: 23.806494
+  type: 'test'
+  ...
+# Subtest: Manager API requires configured owner token
+ok 3 - Manager API requires configured owner token
+  ---
+  duration_ms: 0.927751
+  type: 'test'
+  ...
+# Subtest: Manager API rejects missing auth
+ok 4 - Manager API rejects missing auth
+  ---
+  duration_ms: 1.702866
+  type: 'test'
+  ...
+# Subtest: Manager API rejects invalid bearer
+ok 5 - Manager API rejects invalid bearer
+  ---
+  duration_ms: 11.623965
+  type: 'test'
+  ...
+# Subtest: Status explains remote roles are not verified
+ok 6 - Status explains remote roles are not verified
+  ---
+  duration_ms: 2.996027
+  type: 'test'
+  ...
+# Subtest: Owner can list defined roles
+ok 7 - Owner can list defined roles
+  ---
+  duration_ms: 1.234324
+  type: 'test'
+  ...
+# Subtest: Build draft is escaped, staging-labelled, and saved in D1
+ok 8 - Build draft is escaped, staging-labelled, and saved in D1
+  ---
+  duration_ms: 5.455952
+  type: 'test'
+  ...
+# Subtest: QA reads saved HTML and passes, not caller supplied HTML
+ok 9 - QA reads saved HTML and passes, not caller supplied HTML
+  ---
+  duration_ms: 3.709711
+  type: 'test'
+  ...
+# Subtest: QA requires existing draft
+ok 10 - QA requires existing draft
+  ---
+  duration_ms: 2.296253
+  type: 'test'
+  ...
+# Subtest: Simulated approvals require current QA and exact version
+ok 11 - Simulated approvals require current QA and exact version
+  ---
+  duration_ms: 6.817898
+  type: 'test'
+  ...
+# Subtest: Revisions invalidate QA and both approvals
+ok 12 - Revisions invalidate QA and both approvals
+  ---
+  duration_ms: 5.084753
+  type: 'test'
+  ...
+# Subtest: Subsequent build increments version and approvals stay invalid
+ok 13 - Subsequent build increments version and approvals stay invalid
+  ---
+  duration_ms: 2.841799
+  type: 'test'
+  ...
+# Subtest: Publishing refuses even after simulated QA and both approvals
+ok 14 - Publishing refuses even after simulated QA and both approvals
+  ---
+  duration_ms: 2.83607
+  type: 'test'
+  ...
+# Subtest: Sales obeys exact approved tier range and no charge
+ok 15 - Sales obeys exact approved tier range and no charge
+  ---
+  duration_ms: 0.390557
+  type: 'test'
+  ...
+# Subtest: Finance does not claim real payments or bank setup
+ok 16 - Finance does not claim real payments or bank setup
+  ---
+  duration_ms: 0.377358
+  type: 'test'
+  ...
+# Subtest: Customer care does not contact customers
+ok 17 - Customer care does not contact customers
+  ---
+  duration_ms: 0.136252
+  type: 'test'
+  ...
+# Subtest: Support escalates security issues
+ok 18 - Support escalates security issues
+  ---
+  duration_ms: 0.070504
+  type: 'test'
+  ...
+# Subtest: Research does not scrape data or contact anyone
+ok 19 - Research does not scrape data or contact anyone
+  ---
+  duration_ms: 0.091655
+  type: 'test'
+  ...
+# Subtest: Invalid action and invalid tier are rejected
+ok 20 - Invalid action and invalid tier are rejected
+  ---
+  duration_ms: 0.520088
+  type: 'test'
+  ...
+# Subtest: Payload containing real email is rejected
+ok 21 - Payload containing real email is rejected
+  ---
+  duration_ms: 1.84076
+  type: 'test'
+  ...
+# Subtest: Payload containing a phone is rejected
+ok 22 - Payload containing a phone is rejected
+  ---
+  duration_ms: 1.920598
+  type: 'test'
+  ...
+# Subtest: Credential fields are rejected recursively
+ok 23 - Credential fields are rejected recursively
+  ---
+  duration_ms: 0.769908
+  type: 'test'
+  ...
+# Subtest: Request without synthetic:true is rejected
+ok 24 - Request without synthetic:true is rejected
+  ---
+  duration_ms: 0.758491
+  type: 'test'
+  ...
+# Subtest: Too-large body rejected without relying on Content-Length
+ok 25 - Too-large body rejected without relying on Content-Length
+  ---
+  duration_ms: 0.818079
+  type: 'test'
+  ...
+# Subtest: Malformed JSON and unsupported media type rejected
+ok 26 - Malformed JSON and unsupported media type rejected
+  ---
+  duration_ms: 0.981931
+  type: 'test'
+  ...
+# Subtest: Project IDs cannot contain slash/path traversal
+ok 27 - Project IDs cannot contain slash/path traversal
+  ---
+  duration_ms: 0.67684
+  type: 'test'
+  ...
+# Subtest: Can retrieve job summary and audit through D1
+ok 28 - Can retrieve job summary and audit through D1
+  ---
+  duration_ms: 1.718108
+  type: 'test'
+  ...
+# Subtest: GitHub status is clear when token missing
+ok 29 - GitHub status is clear when token missing
+  ---
+  duration_ms: 0.164854
+  type: 'test'
+  ...
+# Subtest: Manager GitHub writes cannot touch main or arbitrary paths
+ok 30 - Manager GitHub writes cannot touch main or arbitrary paths
+  ---
+  duration_ms: 0.416866
+  type: 'test'
+  ...
+# Subtest: GitHub dev-only commit uses exact branch, never main
+ok 31 - GitHub dev-only commit uses exact branch, never main
+  ---
+  duration_ms: 0.629399
+  type: 'test'
+  ...
+# Subtest: GitHub issue task requires prefixed name and no missing token
+ok 32 - GitHub issue task requires prefixed name and no missing token
+  ---
+  duration_ms: 0.193115
+  type: 'test'
+  ...
+# Subtest: Cloudflare inspector requires verified exact account
+ok 33 - Cloudflare inspector requires verified exact account
+  ---
+  duration_ms: 0.172444
+  type: 'test'
+  ...
+# Subtest: Role health does not invent live agent status
+ok 34 - Role health does not invent live agent status
+  ---
+  duration_ms: 0.179405
+  type: 'test'
+  ...
+# Subtest: Unconfigured GitHub write endpoint returns failure instead of pretending success
+ok 35 - Unconfigured GitHub write endpoint returns failure instead of pretending success
+  ---
+  duration_ms: 1.337696
+  type: 'test'
+  ...
+# Subtest: GitHub write endpoint requires explicit branch-only confirmation
+ok 36 - GitHub write endpoint requires explicit branch-only confirmation
+  ---
+  duration_ms: 0.705192
+  type: 'test'
+  ...
+# Subtest: No public access to manager endpoint
+ok 37 - No public access to manager endpoint
+  ---
+  duration_ms: 0.389335
+  type: 'test'
+  ...
+# Subtest: No deploy or payments route exists
+ok 38 - No deploy or payments route exists
+  ---
+  duration_ms: 1.629728
+  type: 'test'
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 172.648318
