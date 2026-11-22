@@ -72,6 +72,49 @@ export function runRole(role,action,input={},context={}) {
         realInvoicesEnabled:false,paymentsEnabled:false,
         headquartersMayBeTakenOfflineAutomatically:false,
         note:'No site may be published or suspended by this response. Real actions need separate authorization and verified integrations'};
+    case 'sales/handle-objection': {
+      // One respectful answer in an ongoing, permission-based conversation.
+      // A clear refusal or opt-out ALWAYS takes priority over persuasion.
+      // No message or telephone call is sent by this staging function.
+      const reason=val(input,'reason',32).toLowerCase();
+      const reasons=['hesitant','price','timing','trust','already_has_site',
+        'not_interested','opt_out','other'];
+      if(!reasons.includes(reason)) error('Choose a supported objection reason');
+      const followUps=Number(input.followUpsThisConversation ?? 0);
+      if(!Number.isInteger(followUps)||followUps<0||followUps>20)
+        error('Invalid follow-up count');
+      if(input.customerDeclined===true || input.doNotContact===true ||
+        reason==='not_interested' || reason==='opt_out'){
+        return {status:'CLOSE_CONVERSATION_NO_FOLLOWUP',agent:role,
+          reply:reason==='opt_out'||input.doNotContact===true
+            ? 'Understood. We will not contact you again about this.'
+            : 'Thank you for letting us know. We respect your decision and will not follow up.',
+          reason,followUpAllowed:false,requiresSuppressionRecord:true,
+          suppressionRecorded:false,messageSent:false,callPlaced:false,
+          paymentCharged:false,offerIsLive:false};
+      }
+      if(followUps>=1){
+        return {status:'CLOSE_CONVERSATION_NO_FOLLOWUP',agent:role,
+          reply:'Thank you for considering MapleWeb AI. No pressure to decide now.',
+          reason,followUpAllowed:false,requiresSuppressionRecord:false,
+          suppressionRecorded:false,messageSent:false,callPlaced:false,
+          paymentCharged:false,offerIsLive:false};
+      }
+      const replies={
+        hesitant:'A website may help customers understand your services and find ways to contact you. What would be most helpful for your business? We can stop if you prefer.',
+        price:'Budget matters. We can compare our Simple, Professional and Advanced planning ranges and prepare a written quote for only the features you need. Would a smaller option be useful?',
+        timing:'There is no rush. If the timing is not right, we can end here. Would you prefer a brief overview for when you are ready?',
+        trust:'It makes sense to want to see the result before deciding. We are planning private previews and a clearly agreed 24-hour trial before payment, but these are not live services yet. Would you like an explanation of that proposed process?',
+        already_has_site:'If your current website meets your needs, you may not need a replacement. If you want, we can discuss one specific improvement instead. Is there something you wish worked better?',
+        other:'Is there one question or concern I could help answer? If you would rather stop, that is completely fine.'
+      };
+      return {status:'DRAFT_REPLY_ONLY',agent:role,reason,reply:replies[reason],
+        followUpAllowed:true,maxOptionalFollowUpsPerConversation:1,
+        requiresCustomerPermission:true,requiresSuppressionRecord:false,
+        suppressionRecorded:false,messageSent:false,callPlaced:false,
+        paymentCharged:false,offerIsLive:false,
+        nextStep:'Use only while the customer is willing to continue; no unsolicited later follow-up'};
+    }
     case 'research/plan':
       return {status:'RESEARCH_PLAN_ONLY',agent:role,sector:val(input,'sector',70)||'local business',
         area:val(input,'area',70)||'Toronto',scrapedContacts:0,messagesSent:0,
