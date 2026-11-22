@@ -1,0 +1,10 @@
+{
+  // Staging Worker only. Never use the public website Worker name.
+  "name": "mapleweb-manager-rebuilt-staging",
+  "main": "./src/worker.mjs",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "vars": { "MODE": "staging" }
+  // Add D1 after Cloudflare account verification.
+  // Do not place access tokens here.
+}
