@@ -75,6 +75,42 @@ New tests: `tests/sales.test.mjs`. Run `npm test` from `agents/manager`.
 GitHub Actions workflow `test-manager-rebuild.yml` tests development
 branch changes without deploying to Cloudflare.
 
+### Respectful objection handling (new staging action)
+
+Use `sales/handle-objection` through the same owner-authenticated, synthetic-only
+`POST /api/jobs` endpoint. Example:
+
+```json
+{
+  "synthetic": true,
+  "projectId": "TESTSALES1",
+  "role": "sales",
+  "action": "handle-objection",
+  "input": {
+    "reason": "price",
+    "followUpsThisConversation": 0
+  }
+}
+```
+
+Supported reasons: `hesitant`, `price`, `timing`, `trust`,
+`already_has_site`, `not_interested`, `opt_out`, `other`.
+
+The response is a **draft reply only**, not an outgoing message or AI phone call.
+It explains realistic value and asks at most one *optional* question while the
+customer is willing to continue. Direct refusal, opt-out or `doNotContact:true`
+must close the conversation. `customerDeclined:true` has the same effect.
+For an ongoing conversation, `followUpsThisConversation:1` prevents another
+attempt. No fake urgency, fabricated claims, discounts or guaranteed results.
+
+**Not production enforcement:** The synthetic input can be reset by its caller;
+a live calling agent MUST instead persist authenticated consent, refusal,
+suppression and follow-up counts server-side before any outreach. The staging
+output sets `requiresSuppressionRecord:true` for a clear refusal but
+`suppressionRecorded:false` because no real CRM is connected. Never treat a
+draft reply as permission to contact someone. This is not a live sales system.
+Tests: `tests/sales-objections.test.mjs`.
+
 ## Remaining activation steps
 1. Confirm the GitHub Actions test result and any fixes required.
 2. Reconcile older v5/M7 developer source without overwriting or assuming it is integrated.
