@@ -37,3 +37,13 @@ test('human support escalation is blocked before troubleshooting',()=>{const o=s
 test('resolved support issue needs no human call',()=>{const o=sample();a.support(o,'start');a.support(o,'result',true);assert.equal(o.supportStatus,'RESOLVED');});
 test('unresolved support issue receives demonstration-only call state',()=>{const o=sample();a.support(o,'start');const reply=a.support(o,'result',false);assert.equal(o.supportStatus,'ARRANGING_HUMAN_CALL_DEMO');assert.match(reply,/No real booking/);});
 test('web demo exposes previews and the required safety wording',()=>{const html=fs.readFileSync(__dirname+'/index.html','utf8');assert.match(html,/id="preview"/);assert.match(html,/id="publishBtn"/);assert.match(html,/id="customerApproveBtn"/);assert.match(html,/id="ownerApproveBtn"/);assert.match(html,/Payments are disabled/i);assert.match(html,/engine\.js/);assert.doesNotMatch(html,/<script[^>]+src="https?:/);});
+
+test('standalone demo has exactly one app and two intact inline script blocks',()=>{
+ const html=fs.readFileSync(__dirname+'/MapleWeb_AI_Offline_Demo.html','utf8');
+ assert.equal((html.match(/<script\b/g)||[]).length,2);
+ assert.equal((html.match(/<\/script>/g)||[]).length,2);
+ assert.equal((html.match(/<main class="container">/g)||[]).length,1);
+ assert.match(html,/root\.MapleWebDemo/);
+ assert.match(html,/<\/body><\/html>$/);
+ assert.doesNotMatch(html,/<script[^>]+src=/);
+});
