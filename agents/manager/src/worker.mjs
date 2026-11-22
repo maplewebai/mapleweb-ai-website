@@ -6,6 +6,7 @@ import {project,saveProject,saveJob,fetchJob,listJobs,audit,requireDb} from './s
 import {diagnoseGitHub,createManagerIssue,upsertDevFile,githubConfig} from './github.mjs';
 import {inspectCloudflare,checkRoleHealth} from './cloudflare.mjs';
 import {createKimiModelApi} from './kimi-model-api.mjs';
+import {stripeTestStatus,createStripeTestCheckout,receiveStripeTestWebhook} from './stripe-test.mjs';
 import {newBusinessCase,applyOwnerCaseEvent,caseCapabilities} from './business-cases.mjs';
 import {readBusinessCase,addBusinessCase,updateBusinessCase,listBusinessCases} from './business-cases-store.mjs';
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
@@ -27,7 +28,17 @@ export async function handle(request,env){
     roleDefinitions:8,roleWorkersVerified:0,publishingEnabled:false,paymentsEnabled:false,
     note:'Staging endpoint health is not proof that eight remote agents are running'});
   if(path==='/health')return methodError();
+  // Stripe signs webhook requests: verify raw signed payload before any update.
+  // It is the only unauthenticated API route, and is TEST-ONLY.
+  if(path==='/api/payments/test-webhook'&&request.method==='POST')
+    return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/payments/test-status'&&request.method==='GET')
+    return json(stripeTestStatus(env));
+  if(path==='/api/payments/test-checkout'&&request.method==='POST'){
+    const payload=await readJson(request,2000);
+    return json(await createStripeTestCheckout(env,payload),201);
+  }
   if(path==='/api/status'&&request.method==='GET')return json({manager:'website-manager',mode:'staging',
     storageReady:!!env.DB,roles:ROLES.map(id=>({id,defined:true,remoteVerified:false})),
     remoteDispatch:remoteRoleState(env),
