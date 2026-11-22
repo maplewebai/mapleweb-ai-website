@@ -1,0 +1,32 @@
+name: Test eight isolated staging agent roles (NO DEPLOY)
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - 'agents/roles/**'
+      - '.github/workflows/test-agent-roles.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  roles:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mapleweb-ai-agents
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify eight role services
+        run: |
+          npm test
+          npm run check
+        working-directory: agents/roles
+      - name: Verify coordinating Manager
+        run: npm test
+        working-directory: agents/manager
+      - name: Safety note
+        run: echo 'All tests are local. No Cloudflare deployment, payment or customer publication occurred.'
