@@ -5,6 +5,7 @@ import {bad,readJson,requireOwner,validateSynthetic,idIsSafe} from './security.m
 import {project,saveProject,saveJob,fetchJob,listJobs,audit,requireDb} from './store.mjs';
 import {diagnoseGitHub,createManagerIssue,upsertDevFile,githubConfig} from './github.mjs';
 import {inspectCloudflare,checkRoleHealth} from './cloudflare.mjs';
+import {rejectHeadquartersAvailabilityChange} from './site-protection.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -29,7 +30,15 @@ export async function handle(request,env){
     remoteDispatch:remoteRoleState(env),
     github:{...githubConfig,credentialConfigured:!!env.GITHUB_TOKEN,writeVerified:false},
     cloudflare:{inspectorConfigured:!!env.CLOUDFLARE_READ_TOKEN},
-    paymentsEnabled:false,publishEnabled:false,realCustomerInputAllowed:false});
+    paymentsEnabled:false,publishEnabled:false,realCustomerInputAllowed:false,
+    headquartersProtection:{automaticShutdownAllowed:false,ownerApprovalRequired:true,
+      ownerApprovalVerifierConnected:false,siteOperationsAvailable:false}});
+  // Explicit headquarters operation endpoint: fail closed. Even an authenticated
+  // Manager user cannot use a client-supplied approval flag to take HQ offline.
+  if(path==='/api/sites/headquarters/operations'&&request.method==='POST'){
+    const p=validateSynthetic(await readJson(request));
+    rejectHeadquartersAvailabilityChange(p.action);
+  }
   if(path==='/api/roles'&&request.method==='GET')return json({roles:ROLES,pricesCAD:PRICES_CAD});
   if(path==='/api/integrations/github'&&request.method==='GET')return json(await diagnoseGitHub(env));
   if(path==='/api/integrations/cloudflare'&&request.method==='GET')return json(await inspectCloudflare(env));
