@@ -1,0 +1,5 @@
+{
+  "synthetic": true,
+  "title": "MapleWeb Manager: Resolve GitHub 403 and upload rebuilt staging Manager",
+  "body": "Owner requested the Manager handle GitHub authorization and upload of the fresh Manager code. Repository maplewebai/mapleweb-ai-website, development branch mapleweb-ai-agents ONLY. Verify existing M7/v5 work and preserve all approved safeguards. GitHub write is currently blocked (403 Resource not accessible by integration); request an owner-approved repository-scoped GitHub installation/token rather than bypassing access. Upload agents/manager/** from the attached rebuild, run 38+ tests, record commit SHA. No main merges, customer site publishing, paid resources, or changes to production website. Then verify intended Cloudflare account and deploy a separate staging Worker only after authorized sign-in. See docs/MANAGER_GITHUB_WORK_ORDER.md."
+}
