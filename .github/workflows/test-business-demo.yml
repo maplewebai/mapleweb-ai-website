@@ -1,0 +1,26 @@
+name: MapleWeb business demo tests (NO DEPLOY)
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - 'demo/**'
+      - '.github/workflows/test-business-demo.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax-check demo engine
+        run: node --check demo/engine.js
+      - name: Test business workflow, publishing guards, sales and support
+        run: node --test demo/business.test.cjs
+      - name: Confirm demo never deploys or collects payments
+        run: |
+          echo "Demo-only tests. No Kimi API, phone calls, customer data, payments, Cloudflare or production publishing." >> "$GITHUB_STEP_SUMMARY"
