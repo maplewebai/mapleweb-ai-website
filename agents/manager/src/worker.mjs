@@ -1,5 +1,6 @@
 // MapleWeb AI rebuilt Manager. Isolated staging; no production publication or payments.
-import {ROLES,PRICES_CAD,runRole} from './roles.mjs';
+import {ROLES,PRICES_CAD} from './roles.mjs';
+import {runStagingRole,remoteRoleState} from './remote.mjs';
 import {bad,readJson,requireOwner,validateSynthetic,idIsSafe} from './security.mjs';
 import {project,saveProject,saveJob,fetchJob,listJobs,audit,requireDb} from './store.mjs';
 import {diagnoseGitHub,createManagerIssue,upsertDevFile,githubConfig} from './github.mjs';
@@ -25,6 +26,7 @@ export async function handle(request,env){
   await requireOwner(request,env);
   if(path==='/api/status'&&request.method==='GET')return json({manager:'website-manager',mode:'staging',
     storageReady:!!env.DB,roles:ROLES.map(id=>({id,defined:true,remoteVerified:false})),
+    remoteDispatch:remoteRoleState(env),
     github:{...githubConfig,credentialConfigured:!!env.GITHUB_TOKEN,writeVerified:false},
     cloudflare:{inspectorConfigured:!!env.CLOUDFLARE_READ_TOKEN},
     paymentsEnabled:false,publishEnabled:false,realCustomerInputAllowed:false});
@@ -62,7 +64,7 @@ export async function handle(request,env){
       qaPassed:current.qa_passed===1,revisionOpen:current.revision_open===1,
       ownerApprovedVersion:current.owner_approved,customerApprovedVersion:current.customer_approved};
     if(p.role==='website-developer'&&p.action==='request-revision'&&!current.version)throw bad('No existing draft to revise');
-    const result=runRole(p.role,p.action,input,ctx);
+    const result=await runStagingRole(env,p.role,p.action,input,ctx);
     if(p.role==='website-developer'&&p.action==='build-draft'){
       current.version=result.version;current.draft_html=result.html;
       current.qa_passed=0;current.revision_open=0;current.owner_approved=0;current.customer_approved=0;
