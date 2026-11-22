@@ -1,7 +1,7 @@
 // Generate only isolated staging configs. No Cloudflare API calls or deploys.
 import fs from 'node:fs';
 import path from 'node:path';
-import {ROLES} from '../manager/src/roles.mjs';
+import {ROLES} from './manager/src/roles.mjs';
 const required=(name)=>{const s=String(process.env[name]||'').trim();
   if(!s)throw Error('Missing required deployment setting: '+name);return s;};
 const subdomain=required('MAPLEWEB_STAGING_WORKERS_SUBDOMAIN');
