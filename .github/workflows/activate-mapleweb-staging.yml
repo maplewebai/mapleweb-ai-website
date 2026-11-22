@@ -1,4 +1,4 @@
-name: Activate isolated MapleWeb AI staging Workers (MANUAL, NO PRODUCTION)
+name: RETIRED - legacy nine-Worker staging deployment (NO DEPLOY)
 on:
   workflow_dispatch:
   push:
@@ -9,145 +9,16 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: mapleweb-ai-staging-activation
-  cancel-in-progress: false
-
 jobs:
-  activate:
+  retired:
     if: github.ref == 'refs/heads/mapleweb-ai-agents'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      EXPECTED_ACCOUNT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
-      MAPLEWEB_STAGING_WORKERS_SUBDOMAIN: ${{ vars.MAPLEWEB_STAGING_WORKERS_SUBDOMAIN }}
-      MAPLEWEB_STAGING_D1_DATABASE_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
-      OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
-      ROLE_TOKEN: ${{ secrets.MAPLEWEB_STAGING_ROLE_TOKEN }}
-      VERIFIED_FREE_PLAN: ${{ vars.MAPLEWEB_STAGING_NO_CHARGE_VERIFIED }}
-      MANAGER_GH_TOKEN: ${{ secrets.MAPLEWEB_MANAGER_GITHUB_TOKEN }}
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: mapleweb-ai-agents
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Run all Manager and role tests before deployment
+      - name: Report replacement plan; do not deploy
         run: |
-          set -euo pipefail
-          (cd agents/manager && npm test && npm run check)
-          (cd agents/roles && npm test && npm run check)
-
-      - name: Verify no-charge staging and authenticated Cloudflare identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          [ "$VERIFIED_FREE_PLAN" = 'true' ] || { echo '::error::No-charge staging plan has not been explicitly verified'; exit 1; }
-          [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || {
-            echo '::error::Cloudflare token or account ID missing'; exit 1;
-          }
-          [ -n "$EXPECTED_ACCOUNT" ] && [ "$EXPECTED_ACCOUNT" = "$CLOUDFLARE_ACCOUNT_ID" ] || {
-            echo '::error::Cloudflare account mismatch'; exit 1;
-          }
-          [ "${#OWNER_TOKEN}" -ge 32 ] && [ "${#ROLE_TOKEN}" -ge 32 ] || {
-            echo '::error::Missing secure staging owner or role token'; exit 1;
-          }
-          [ -n "$MAPLEWEB_STAGING_D1_DATABASE_ID" ] && [ -n "$MAPLEWEB_STAGING_WORKERS_SUBDOMAIN" ] || {
-            echo '::error::Separate staging D1 and Workers subdomain must be configured'; exit 1;
-          }
-          node agents/generate-staging-config.mjs
-
-          curl --fail --silent --show-error --max-time 25 -o /tmp/cf-account.json \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
-          jq -e --arg id "$CLOUDFLARE_ACCOUNT_ID" '.success == true and .result.id == $id' /tmp/cf-account.json >/dev/null || {
-            echo '::error::Authenticated Cloudflare account verification failed'; exit 1;
-          }
-
-          curl --fail --silent --show-error --max-time 25 -o /tmp/cf-subdomain.json \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
-          jq -e --arg s "${MAPLEWEB_STAGING_WORKERS_SUBDOMAIN%.workers.dev}" \
-            '.success == true and .result.subdomain == $s' /tmp/cf-subdomain.json >/dev/null || {
-            echo '::error::Cloudflare Workers subdomain mismatch'; exit 1;
-          }
-
-          curl --fail --silent --show-error --max-time 25 -o /tmp/cf-d1.json \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$MAPLEWEB_STAGING_D1_DATABASE_ID"
-          jq -e '.success == true and .result.name == "mapleweb-manager-staging-db"' /tmp/cf-d1.json >/dev/null || {
-            echo '::error::D1 database is not the isolated staging database'; exit 1;
-          }
-
-          curl --fail --silent --show-error --max-time 25 -o /tmp/cf-workers.json \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts"
-          jq -e '.success == true and (.result|type) == "array"' /tmp/cf-workers.json >/dev/null || {
-            echo '::error::Cannot verify existing Cloudflare Workers safely'; exit 1;
-          }
-          while IFS= read -r script; do
-            if jq -e --arg name "$script" '.result[] | select(.id == $name)' /tmp/cf-workers.json >/dev/null; then
-              echo "::error::Existing Worker name collision for $script; no overwrite authorized"
-              exit 1
-            fi
-          done </tmp/mapleweb-staging-worker-names.txt
-          echo 'Nine new staging names verified; no existing public Worker will be replaced.'
-
-      - name: Install Wrangler
-        run: npm install --prefix agents/manager --no-audit --no-fund
-
-      - name: Deploy only isolated role Workers and encrypted role secrets
-        shell: bash
-        run: |
-          set -euo pipefail
-          W="$GITHUB_WORKSPACE/agents/manager/node_modules/.bin/wrangler"
-          for role in website-developer customer-care sales research quality-checker support finance publishing; do
-            config="agents/roles/.generated-$role.json"
-            "$W" deploy --config "$config"
-            printf '%s' "$ROLE_TOKEN" | "$W" secret put ROLE_INTERNAL_TOKEN --config "$config"
-          done
-
-      - name: Initialize ONLY the verified staging D1 and deploy isolated Manager
-        shell: bash
-        run: |
-          set -euo pipefail
-          W="$GITHUB_WORKSPACE/agents/manager/node_modules/.bin/wrangler"
-          config='agents/manager/.generated-staging.json'
-          "$W" d1 migrations apply mapleweb-manager-staging-db --remote --config "$config" --yes
-          "$W" deploy --config "$config"
-          printf '%s' "$OWNER_TOKEN" | "$W" secret put MANAGER_OWNER_TOKEN --config "$config"
-          printf '%s' "$ROLE_TOKEN" | "$W" secret put ROLE_INTERNAL_TOKEN --config "$config"
-          if [ -n "$MANAGER_GH_TOKEN" ]; then
-            printf '%s' "$MANAGER_GH_TOKEN" | "$W" secret put GITHUB_TOKEN --config "$config"
-          fi
-
-      - name: Prove all nine staging services actually respond and a synthetic job works
-        shell: bash
-        run: |
-          set -euo pipefail
-          for role in website-developer customer-care sales research quality-checker support finance publishing; do
-            url="https://mapleweb-agent-$role-staging.$MAPLEWEB_STAGING_WORKERS_SUBDOMAIN/health"
-            curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 20 "$url" \
-              | jq -e --arg agent "$role" '.agent == $agent and .healthy == true and .mode == "staging" and .internalAuthReady == true' >/dev/null
-            echo "Verified live staging role: $role"
-          done
-          murl="https://mapleweb-manager-rebuilt-staging.$MAPLEWEB_STAGING_WORKERS_SUBDOMAIN"
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 "$murl/health" \
-            | jq -e '.deployedWorkerResponding == true and .managerReady == true' >/dev/null
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 \
-            -H "Authorization: Bearer $OWNER_TOKEN" "$murl/api/integrations/agents-health" \
-            | jq -e '.totalRoles == 8 and .liveRolesVerified == 8' >/dev/null
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 \
-            -H "Authorization: Bearer $OWNER_TOKEN" -H 'Content-Type: application/json' \
-            --data '{"synthetic":true,"projectId":"ACTIVATION001","role":"sales","action":"quote","input":{"tier":1}}' \
-            "$murl/api/jobs" | jq -e '.result.agent == "sales" and .result.status == "OWNER_REVIEW_REQUIRED"' >/dev/null
-          {
-            echo '### Staging activation verified'
-            echo 'One Manager Worker and eight deterministic role Workers responded to live tests.'
-            echo "Manager: $murl/health"
-            echo 'Not generative AI; no payments or customer sites published. Public website unchanged.'
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Legacy nine-Worker architecture is retired. No deployment attempted."
+          echo "### MapleWeb 2.0 — old deployment retired" >> "$GITHUB_STEP_SUMMARY"
+          echo "The old eight-role + Manager Worker deployment has been disabled." >> "$GITHUB_STEP_SUMMARY"
+          echo "Review docs/MAPLEWEB_KIMI_LEAN_V2_PLAN.md on mapleweb-ai-agents." >> "$GITHUB_STEP_SUMMARY"
+          echo "No Cloudflare authorization, API calls, writes, paid usage or public site changes." >> "$GITHUB_STEP_SUMMARY"
