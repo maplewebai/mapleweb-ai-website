@@ -1,0 +1,82 @@
+name: MapleWeb staging CI — test all nine services (NO DEPLOY)
+
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - 'agents/**'
+      - '.github/workflows/staging-safe-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mapleweb-staging-safe-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mapleweb-ai-agents
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test rebuilt Website Manager (synthetic only)
+        working-directory: agents/manager
+        run: |
+          npm test
+          npm run check
+      - name: Test eight isolated role services (synthetic only)
+        working-directory: agents/roles
+        run: |
+          npm test
+          npm run check
+      - name: Verify read-only account inventory safeguards
+        run: |
+          node --check agents/cloudflare-inventory.mjs
+          node --test agents/tests/cloudflare-inventory.test.mjs
+      - name: Generate and validate exactly nine staging Worker configs (NO DEPLOY)
+        env:
+          MAPLEWEB_STAGING_WORKERS_SUBDOMAIN: validation-only.workers.dev
+          MAPLEWEB_STAGING_D1_DATABASE_ID: 00000000-0000-4000-8000-000000000001
+        run: |
+          set -euo pipefail
+          node agents/generate-staging-config.mjs
+          node <<'NODE'
+          const fs = require('node:fs');
+          const roles = ['website-developer','customer-care','sales','research','quality-checker','support','finance','publishing'];
+          const expected = new Set();
+          for (const role of roles) {
+            const p = 'agents/roles/.generated-'+role+'.json';
+            const config = JSON.parse(fs.readFileSync(p, 'utf8'));
+            const name = 'mapleweb-agent-'+role+'-staging';
+            if (config.name!==name || config.vars?.MODE!=='staging' ||
+                config.vars?.ROLE_NAME!==role || config.workers_dev!==true ||
+                config.route || config.routes) throw Error('Unsafe or incorrect staging config: '+role);
+            expected.add(name);
+          }
+          const manager=JSON.parse(fs.readFileSync('agents/manager/.generated-staging.json','utf8'));
+          if (manager.name!=='mapleweb-manager-rebuilt-staging' ||
+              manager.vars?.MODE!=='staging' || manager.workers_dev!==true ||
+              manager.route || manager.routes ||
+              manager.d1_databases?.length!==1 ||
+              manager.d1_databases[0].database_name!=='mapleweb-manager-staging-db' ||
+              manager.d1_databases[0].database_id!=='00000000-0000-4000-8000-000000000001')
+            throw Error('Unsafe manager staging config');
+          expected.add(manager.name);
+          const generated=new Set(fs.readFileSync('/tmp/mapleweb-staging-worker-names.txt','utf8').trim().split('\n'));
+          if (expected.size!==9 || generated.size!==9 ||
+              [...expected].some(name=>!generated.has(name))) throw Error('Nine staging Worker name manifest mismatch');
+          console.log('PASS: 9 isolated staging configs, correct names, no production routes, staging D1 only');
+          NODE
+      - name: Record scope (no credentials or deploys)
+        if: always()
+        run: |
+          echo "### Development-branch staging CI" >> "$GITHUB_STEP_SUMMARY"
+          echo "Synthetic tests and nine config checks only. Cloudflare was not accessed; no Workers deployed; main unchanged." >> "$GITHUB_STEP_SUMMARY"
