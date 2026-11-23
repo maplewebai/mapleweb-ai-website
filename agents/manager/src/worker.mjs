@@ -20,6 +20,7 @@ import {buildFictionalSiteBundle,auditFictionalSiteBundle} from './fictional-sit
 import {submitFictionalOrder,ownerFictionalOrderProgress} from './fictional-order-intake.mjs';
 import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-order-queue.mjs';
 import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
+import {fictionalQualityReport} from './fictional-quality-report.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -175,6 +176,13 @@ export async function handle(request,env,callingFetchImpl=fetch){
       return json({caseId:existing.caseId,projectVersion:saved.version,
         localQaPreviouslyRecorded:saved.qa_passed===1,
         ...check});
+    }
+    const qualityPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/quality-report$/);
+    if(qualityPath&&request.method==='GET'){
+      const record=await readBusinessCase(env,qualityPath[1]);
+      if(!record)return json({error:'Case not found'},404);
+      const saved=await project(env.DB,record.caseId);
+      return json(fictionalQualityReport(record,saved));
     }
     const kimiBriefPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/kimi-brief$/);
     if(kimiBriefPath&&request.method==='GET'){
