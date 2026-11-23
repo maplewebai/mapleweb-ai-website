@@ -15,6 +15,7 @@ import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension}
 import {callingSalesState,callingSalesStatus,callingSalesAction} from './calling-sales.mjs';
 import {planningChat,planningBriefForCase} from './planning-chat.mjs';
 import {privateBusinessDashboard} from './business-dashboard.mjs';
+import {managerBusinessReadiness} from './business-readiness.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -38,6 +39,8 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/business/readiness'&&request.method==='GET')
+    return json(managerBusinessReadiness(env));
   if(path==='/api/payments/test-status'&&request.method==='GET')
     return json(stripeTestStatus(env));
   if(path==='/api/payments/test-checkout'&&request.method==='POST'){
