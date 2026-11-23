@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {handle as managerHandle} from '../src/worker.mjs';
-import {handle as callingHandle} from '../../calling-sales/src/worker.mjs';
+import {safeHandle as callingHandle} from '../../calling-sales/src/worker.mjs';
 
 const ownerToken='o'.repeat(64);
 const adminToken='s'.repeat(64);
@@ -60,9 +60,7 @@ function fixture() {
   async function bridgeFetch(url,options) {
     agentCalls++;
     assert.equal(new URL(url).origin,base);
-    return callingHandle(new Request(url,options),callerEnv,fakeProvider)
-      .catch(()=>new Response(JSON.stringify({error:'Unexpected'}),
-        {status:500,headers:{'content-type':'application/json'}}));
+    return callingHandle(new Request(url,options),callerEnv,fakeProvider);
   }
   async function manager(path,method='GET',body,authenticated=true) {
     const headers={...(authenticated?{authorization:'Bearer '+ownerToken}:{}),
