@@ -17,6 +17,7 @@ import {planningChat,planningBriefForCase} from './planning-chat.mjs';
 import {privateBusinessDashboard} from './business-dashboard.mjs';
 import {managerBusinessReadiness} from './business-readiness.mjs';
 import {buildFictionalSiteBundle,auditFictionalSiteBundle} from './fictional-site-bundle.mjs';
+import {submitFictionalOrder,ownerFictionalOrderProgress} from './fictional-order-intake.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -93,6 +94,18 @@ export async function handle(request,env,callingFetchImpl=fetch){
     if(env.BUSINESS_CASES_ENABLED!=='true')
       throw bad('Private business-case operations are not enabled',503);
     return json(await privateBusinessDashboard(env));
+  }
+  if(path==='/api/business/orders/synthetic-intake'&&request.method==='POST'){
+    return json(await submitFictionalOrder(env,await readJson(request,2000)),201);
+  }
+  const ownerOrderPath=path.match(/^\/api\/business\/orders\/([A-Z0-9_-]{3,30})\/progress$/);
+  if(ownerOrderPath&&request.method==='GET'){
+    if(env.BUSINESS_CASES_ENABLED!=='true')throw bad('Private case tracking disabled',503);
+    requireDb(env);
+    const item=await readBusinessCase(env,ownerOrderPath[1]);
+    if(!item)return json({error:'Fictional case not found'},404);
+    const saved=await project(env.DB,ownerOrderPath[1]);
+    return json(ownerFictionalOrderProgress(item,saved));
   }
   // Business-case API stores non-personal metadata in a private D1 only.
   // Explicit opt-in is required even on staging; no customer communications,
