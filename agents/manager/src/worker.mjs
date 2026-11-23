@@ -18,6 +18,7 @@ import {privateBusinessDashboard} from './business-dashboard.mjs';
 import {managerBusinessReadiness} from './business-readiness.mjs';
 import {buildFictionalSiteBundle,auditFictionalSiteBundle} from './fictional-site-bundle.mjs';
 import {submitFictionalOrder,ownerFictionalOrderProgress} from './fictional-order-intake.mjs';
+import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-order-queue.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -94,6 +95,11 @@ export async function handle(request,env,callingFetchImpl=fetch){
     if(env.BUSINESS_CASES_ENABLED!=='true')
       throw bad('Private business-case operations are not enabled',503);
     return json(await privateBusinessDashboard(env));
+  }
+  if(path==='/api/business/orders/queue'&&request.method==='GET'){
+    if(env.BUSINESS_CASES_ENABLED!=='true')throw bad('Private case tracking disabled',503);
+    const filters=parsePrivateOrderQueueQuery(u.search);
+    return json(await listPrivateFictionalOrders(env,filters));
   }
   if(path==='/api/business/orders/synthetic-intake'&&request.method==='POST'){
     return json(await submitFictionalOrder(env,await readJson(request,2000)),201);
