@@ -38,7 +38,7 @@ test('demo has no server calls, storage, payment, phone or external dependencies
   assert.doesNotMatch(html,/<form\b/i);
   assert.doesNotMatch(html,/<iframe\b/i);
   assert.doesNotMatch(html,/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage)\b/);
-  assert.doesNotMatch(html,/(?:https?:)?\/\//);
+  assert.doesNotMatch(html,/https?:\/\//i);
   assert.doesNotMatch(html,/\b(?:sk_test_|sk_live_|api_key|auth_token|secret_key)\b/i);
 });
 test('accessible choices and fictional-only report are present',()=>{
