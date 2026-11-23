@@ -10,6 +10,39 @@ function fail(message, status = 503) {
   error.status = status;
   throw error;
 }
+
+const MAX_KIMI_JSON_BYTES=64*1024;
+async function parseKimiJsonBounded(response) {
+  const contentType=response.headers?.get('content-type')||'';
+  if(!/^application\/json(?:\s*;|$)/i.test(contentType))
+    fail('Kimi model API returned unexpected content type',502);
+  const declared=response.headers.get('content-length');
+  if(declared!==null && (!/^\d+$/.test(declared)||Number(declared)>MAX_KIMI_JSON_BYTES))
+    fail('Kimi model API returned an oversized or invalid content length',502);
+  if(!response.body)fail('Kimi model API returned an empty response body',502);
+  const reader=response.body.getReader();
+  const chunks=[];let total=0;
+  try{
+    for(;;){
+      const {done,value}=await reader.read();
+      if(done)break;
+      total+=value.byteLength;
+      if(total>MAX_KIMI_JSON_BYTES){
+        await reader.cancel().catch(()=>{});
+        fail('Kimi model API response exceeded safety size limit',502);
+      }
+      chunks.push(value);
+    }
+  }catch(e){
+    if(e?.code==='KIMI_MODEL_API_UNAVAILABLE')throw e;
+    fail('Kimi model API response stream failed',502);
+  }finally{reader.releaseLock();}
+  const bytes=new Uint8Array(total);let offset=0;
+  for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
+  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+  catch{fail('Kimi model API returned invalid JSON',502);}
+}
+
 export function createKimiModelApi(env = {}, fetchImpl = fetch) {
   const credentialConfigured = typeof env.KIMI_API_KEY === 'string' && env.KIMI_API_KEY.trim().length > 0;
   const ownerUsageApproved = env.KIMI_PAID_USAGE_APPROVED === 'true';
@@ -65,8 +98,7 @@ export function createKimiModelApi(env = {}, fetchImpl = fetch) {
         fail('Kimi model endpoint was not reachable or timed out', 502);
       }
       if (!response.ok) fail('Kimi model API rejected the request (' + response.status + ')', 502);
-      let result;
-      try { result = await response.json(); } catch { fail('Kimi model API returned invalid JSON', 502); }
+      const result=await parseKimiJsonBounded(response);
       const source = result?.choices?.[0]?.message?.content;
       if (typeof source !== 'string' || source.length === 0 || source.length > 25000)
         fail('Kimi model API returned an unusable draft', 502);
