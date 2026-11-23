@@ -162,6 +162,7 @@
       if(index>=questions.length)return;
       const q=questions[index];if(!q.multi)return;
       const selected=Array.from(el('options').querySelectorAll('input:checked'),x=>x.value);
+      if(q.field==='pages'&&selected.length>8)return error('Choose no more than eight sections.');
       if(q.field==='pages'&&!selected.includes('home'))return error('Choose Home to continue.');
       if(q.field==='pages'&&answers.websiteGoal==='booking-inquiry'&&!selected.includes('booking'))
         return error('Choose Booking for booking inquiries.');
