@@ -9,6 +9,7 @@ import {createKimiModelApi} from './kimi-model-api.mjs';
 import {stripeTestStatus,createStripeTestCheckout,receiveStripeTestWebhook} from './stripe-test.mjs';
 import {newBusinessCase,applyOwnerCaseEvent,caseCapabilities} from './business-cases.mjs';
 import {createCaseStagingDraft} from './case-staging-draft.mjs';
+import {auditSyntheticSitePreview} from './synthetic-site-preview.mjs';
 import {readBusinessCase,addBusinessCase,updateBusinessCase,listBusinessCases} from './business-cases-store.mjs';
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
 import {callingSalesState,callingSalesStatus,callingSalesAction} from './calling-sales.mjs';
@@ -137,6 +138,19 @@ export async function handle(request,env,callingFetchImpl=fetch){
       await audit(env.DB,'fictional-planning-brief-imported',existing.caseId);
       return json({case:caseCapabilities(updated),
         note:'Only predefined fictional website choices were stored. No customer acceptance, build authorization or payment.'});
+    }
+    // Read-only structural coverage audit against the saved fictional preview.
+    // This is not browser QA, real feature verification, approval or publication.
+    const previewAuditPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/preview-audit$/);
+    if(previewAuditPath&&request.method==='GET'){
+      const existing=await readBusinessCase(env,previewAuditPath[1]);
+      if(!existing)return json({error:'Case not found'},404);
+      const saved=await project(env.DB,existing.caseId);
+      if(!saved)return json({error:'Fictional preview not found'},404);
+      const check=auditSyntheticSitePreview(saved.draft_html,existing.requirements);
+      return json({caseId:existing.caseId,projectVersion:saved.version,
+        localQaPreviouslyRecorded:saved.qa_passed===1,
+        ...check});
     }
     const draftPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/staging-draft$/);
     if(draftPath&&request.method==='POST'){
