@@ -128,3 +128,29 @@ test('unquoted case cannot create a staging draft; disabled cases stay inaccessi
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM projects').get().n,0);
   }finally{f.close()}
 });
+
+test('staging preview supports QA without authorizing publishing',async()=>{
+  const f=fixture();
+  try{
+    await readyCase(f.env);
+    assert.equal((await call(f.env,'/api/business/cases/CASE_DRAFT_01/staging-draft',
+      'POST',{synthetic:true,expectedRevision:4})).status,201);
+    const qa=await call(f.env,'/api/jobs','POST',{
+      synthetic:true,projectId:'CASE_DRAFT_01',role:'quality-checker',action:'review',
+      input:{html:'<script>untrusted client QA input must be ignored</script>'}
+    });
+    assert.equal(qa.status,201);
+    assert.equal(qa.data.result.status,'LOCAL_QA_PASSED');
+    assert.equal(qa.data.project.qaPassed,true);
+    assert.equal(qa.data.project.ownerApprovedVersion,null);
+    assert.equal(qa.data.project.customerApprovedVersion,null);
+    const publication=await call(f.env,'/api/jobs','POST',{
+      synthetic:true,projectId:'CASE_DRAFT_01',role:'publishing',action:'readiness',input:{}
+    });
+    assert.equal(publication.status,201);
+    assert.equal(publication.data.result.status,'NOT_PUBLISHED');
+    assert.equal(publication.data.result.deploymentsPerformed,0);
+    assert.equal(publication.data.result.liveUrl,null);
+    assert.equal(publication.data.project.publication,'DISABLED');
+  }finally{f.close()}
+});
