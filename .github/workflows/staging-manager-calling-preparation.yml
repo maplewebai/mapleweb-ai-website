@@ -1,0 +1,85 @@
+name: Verify Manager and Calling Sales staging preparation (NO DEPLOY)
+
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - '.github/workflows/staging-manager-calling-preparation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-preflight:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mapleweb-ai-agents
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test Website Manager code (no network services)
+        working-directory: agents/manager
+        run: |
+          npm test
+          npm run check
+
+      - name: Test Calling Sales code (mock calls only)
+        working-directory: agents/calling-sales
+        run: |
+          npm run check
+          npm test
+
+      - name: Validate isolated deployment configuration (no Cloudflare calls)
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+
+          const calling = JSON.parse(fs.readFileSync('agents/calling-sales/wrangler.jsonc', 'utf8'));
+          assert.equal(calling.name, 'mapleweb-calling-sales-staging');
+          assert.equal(calling.workers_dev, true);
+          assert.ok(!Object.hasOwn(calling, 'route') && !Object.hasOwn(calling, 'routes'), 'No public-site routes permitted');
+          assert.equal(calling.d1_databases?.length, 1);
+          assert.equal(calling.d1_databases[0].binding, 'CALLING_DB');
+          assert.equal(calling.d1_databases[0].database_name, 'mapleweb-calling-sales-staging-db');
+          assert.equal(calling.d1_databases[0].database_id, 'REPLACE_WITH_SEPARATE_STAGING_D1_DATABASE_ID',
+            'Repository config must retain placeholder; real D1 ID belongs to approved deployment configuration');
+
+          for (const key of [
+            'CALLING_INBOUND_ENABLED',
+            'CALLING_OUTBOUND_ENABLED',
+            'CALLING_PAID_USAGE_APPROVED',
+            'CALLING_AUTOMATED_OUTREACH_APPROVED',
+            'CALLING_AI_ENABLED',
+            'CALLING_CUSTOMER_DATA_TRANSFER_APPROVED'
+          ]) {
+            assert.equal(calling.vars?.[key], 'false', `Default must disable ${key}`);
+          }
+          assert.equal(calling.vars?.CALLING_OUTBOUND_TEST_ONLY, 'true');
+
+          const managerWorkflow = fs.readFileSync('.github/workflows/deploy-single-manager-staging.yml', 'utf8');
+          for (const required of [
+            "name:'mapleweb-manager-v2-staging'",
+            "database_name:'mapleweb-manager-staging-db'",
+            'MAPLEWEB_STAGING_FREE_CONFIRMED',
+            'if(cfg.routes || cfg.route)',
+            'Verify live isolated staging endpoints'
+          ]) assert.ok(managerWorkflow.includes(required), `Missing Manager deployment guard: ${required}`);
+
+          console.log('PASS: separate staging services, separate D1, disabled calling/paid usage, guarded Manager workflow');
+          NODE
+
+      - name: Report preparation scope
+        if: always()
+        run: |
+          echo '### Manager + Calling Sales: preparation checks only' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This workflow does not read Cloudflare/Twilio/Kimi secrets, provision resources, deploy Workers, place calls, publish websites, or enable payments.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Real deployment requires independently verified account access, isolated D1 databases, private secrets, and owner approval for any charges.' >> "$GITHUB_STEP_SUMMARY"
