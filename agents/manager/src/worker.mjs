@@ -98,7 +98,7 @@ export async function handle(request,env){
       await audit(env.DB,'business-case-event',event.type+' on '+existing.caseId);
       return json({case:caseCapabilities(updated)});
     }
-    const draftPath=path.match(/^\\/api\\/business\\/cases\\/([A-Z0-9_-]{3,30})\\/staging-draft$/);
+    const draftPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/staging-draft$/);
     if(draftPath&&request.method==='POST'){
       const payload=await readJson(request,1000);
       if(!payload||typeof payload!=='object'||Array.isArray(payload)||
