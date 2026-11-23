@@ -142,6 +142,12 @@ export function auditFictionalSiteBundle(bundle,input) {
     noActiveHtml:htmlPages.every(h=>!/<\s*\/?\s*(script|form|iframe|object|embed|svg|input|textarea|button)\b/i.test(h)),
     noEventHandlers:htmlPages.every(h=>!/\bon[a-z]{3,}\s*=/i.test(h)),
     noExternalResources:htmlPages.every(h=>!/(?:https?:\/\/|\/\/[a-z0-9.-]+\/)/i.test(h)),
+    noDangerousSchemes:htmlPages.every(h=>!/(?:javascript|data|file|blob|vbscript)\s*:/i.test(h)),
+    linksAreLocalAndAllowlisted:htmlPages.every(h=>{
+      const links=Array.from(h.matchAll(/\bhref\s*=\s*(["'])(.*?)\1/gi),m=>m[2]);
+      const allowed=new Set(['styles.css','#content',...req.pages.map(name)]);
+      return links.length===req.pages.length+2&&links.every(ref=>allowed.has(ref));
+    }),
     noSensitiveContactData:htmlPages.every(h=>
       !/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(h)&&
       !/(?:\+?\d[\d .()-]*){10,}/.test(h)),
