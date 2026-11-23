@@ -64,12 +64,16 @@ export function createKimiModelApi(env = {}, fetchImpl = fetch) {
       };
     },
     async createSyntheticCodeDraft(brief) {
-      if (!brief || typeof brief !== 'object' || Array.isArray(brief) || brief.synthetic !== true)
-        throw new TypeError('Fictional synthetic website brief required');
+      if (!brief || typeof brief !== 'object' || Array.isArray(brief) || brief.synthetic !== true ||
+          Object.keys(brief).length!==3 ||
+          !['synthetic','business','goal'].every(k=>Object.hasOwn(brief,k)))
+        throw new TypeError('Only fictional synthetic, business and goal fields are allowed');
       const {business, goal} = brief;
       if (typeof business !== 'string' || business.trim().length < 3 || business.length > 80 ||
           typeof goal !== 'string' || goal.trim().length < 10 || goal.length > 450 ||
-          contact.test(business + ' ' + goal))
+          contact.test(business + ' ' + goal) ||
+          /[<>\x00-\x1f\x7f]/.test(business+' '+goal) ||
+          /(?:https?:\/\/|javascript:|data:)/i.test(business+' '+goal))
         throw new TypeError('Short fictional business and goal without contact data required');
       // Auth is a server-side secret and two server-side flags; client requests cannot authorize spend.
       if (!readyForAuthorizedTest)
