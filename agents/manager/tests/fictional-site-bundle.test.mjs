@@ -57,7 +57,7 @@ test('deterministic fictional bundle has real local page files and nav but never
   assert.equal(audit.realBrowserTested,false);
 });
 test('all allowed pages and features fit the bounded multi-page bundle',()=>{
-  const r={...requirements(),style:'modern',language:'en',
+  const r={...requirements(),style:'modern',language:'en-fr',
     pages:['home','about','services','products','menu','portfolio','faq','contact'],
     features:[...WEBSITE_REQUIREMENT_OPTIONS.features]};
   const bundle=buildFictionalSiteBundle(r);
