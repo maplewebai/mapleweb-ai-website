@@ -1,0 +1,22 @@
+{
+  "name": "mapleweb-calling-sales-staging",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "vars": {
+    "CALLING_INBOUND_ENABLED": "false",
+    "CALLING_OUTBOUND_ENABLED": "false",
+    "CALLING_OUTBOUND_TEST_ONLY": "true",
+    "CALLING_PAID_USAGE_APPROVED": "false",
+    "CALLING_AUTOMATED_OUTREACH_APPROVED": "false",
+    "CALLING_AI_ENABLED": "false",
+    "CALLING_CUSTOMER_DATA_TRANSFER_APPROVED": "false"
+  },
+  "d1_databases": [
+    {
+      "binding": "CALLING_DB",
+      "database_name": "mapleweb-calling-sales-staging-db",
+      "database_id": "REPLACE_WITH_SEPARATE_STAGING_D1_DATABASE_ID"
+    }
+  ]
+}
