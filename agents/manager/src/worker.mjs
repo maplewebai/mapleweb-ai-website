@@ -11,6 +11,7 @@ import {newBusinessCase,applyOwnerCaseEvent,caseCapabilities} from './business-c
 import {createCaseStagingDraft} from './case-staging-draft.mjs';
 import {readBusinessCase,addBusinessCase,updateBusinessCase,listBusinessCases} from './business-cases-store.mjs';
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
+import {callingSalesState,callingSalesStatus,callingSalesAction} from './calling-sales.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -22,7 +23,7 @@ const projectView=p=>p?{id:p.id,version:p.version,qaPassed:p.qa_passed===1,
   publication:'DISABLED'}:null;
 export const defaultProject=(id,old=null)=>({id,version:old?.version||0,draft_html:old?.draft_html||'',
   qa_passed:0,revision_open:0,owner_approved:0,customer_approved:0});
-export async function handle(request,env){
+export async function handle(request,env,callingFetchImpl=fetch){
   const u=new URL(request.url);const path=u.pathname;
   if(path==='/health'&&request.method==='GET')return json({service:'mapleweb-manager-rebuilt',
     mode:'staging',deployedWorkerResponding:true,managerReady:!!env.DB&&!!env.MANAGER_OWNER_TOKEN,
@@ -45,11 +46,25 @@ export async function handle(request,env){
     remoteDispatch:remoteRoleState(env),
     github:{...githubConfig,credentialConfigured:!!env.GITHUB_TOKEN,writeVerified:false},
     cloudflare:{inspectorConfigured:!!env.CLOUDFLARE_READ_TOKEN},
+    callingSales:callingSalesState(env),
     paymentsEnabled:false,publishEnabled:false,realCustomerInputAllowed:false,
     headquartersProtection:{automaticShutdownAllowed:false,ownerApprovalRequired:true,
       ownerApprovalVerifierConnected:false,siteOperationsAvailable:false},
     customerSiteProtection:{automaticSuspensionAllowed:false,ownerApprovalRequired:true,
       ownerApprovalVerifierConnected:false,siteOperationsAvailable:false}});
+  // All calling controls are owner-authenticated. The Manager never stores
+  // telephone numbers, and explicit hosting-side approval gates every outbound call.
+  if(path==='/api/integrations/calling'&&request.method==='GET'){
+    const state=callingSalesState(env);
+    return json({...state,remote:state.enabled&&state.configured?
+      await callingSalesStatus(env,callingFetchImpl):null});
+  }
+  const callingAction=path.match(/^\/api\/integrations\/calling\/(consent|suppress|outbound)$/);
+  if(callingAction&&request.method==='POST'){
+    const input=await readJson(request,1200);
+    return json(await callingSalesAction(env,callingAction[1],input,callingFetchImpl),
+      callingAction[1]==='suppress'?200:201);
+  }
   // Explicit headquarters operation endpoint: fail closed. Even an authenticated
   // Manager user cannot use a client-supplied approval flag to take HQ offline.
   if(path==='/api/sites/headquarters/operations'&&request.method==='POST'){
