@@ -12,6 +12,7 @@ import {createCaseStagingDraft} from './case-staging-draft.mjs';
 import {readBusinessCase,addBusinessCase,updateBusinessCase,listBusinessCases} from './business-cases-store.mjs';
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
 import {callingSalesState,callingSalesStatus,callingSalesAction} from './calling-sales.mjs';
+import {planningChat,planningBriefForCase} from './planning-chat.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -78,6 +79,10 @@ export async function handle(request,env,callingFetchImpl=fetch){
     const p=validateSynthetic(await readJson(request));
     rejectUnapprovedCustomerSuspension(p.action);
   }
+  // Owner-only fictional planning chat. Predefined selections only, no free text,
+  // customer contact information, AI spend, or persistence of conversations.
+  if(path==='/api/business/planning-chat'&&request.method==='POST')
+    return json(planningChat(await readJson(request,1800)));
   // Business-case API stores non-personal metadata in a private D1 only.
   // Explicit opt-in is required even on staging; no customer communications,
   // Kimi calls, payments, or publishing can be triggered by these routes.
@@ -112,6 +117,20 @@ export async function handle(request,env,callingFetchImpl=fetch){
       await updateBusinessCase(env,existing,updated);
       await audit(env.DB,'business-case-event',event.type+' on '+existing.caseId);
       return json({case:caseCapabilities(updated)});
+    }
+    const importPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/import-fictional-plan$/);
+    if(importPath&&request.method==='POST'){
+      const brief=planningBriefForCase(await readJson(request,1800));
+      const existing=await readBusinessCase(env,importPath[1]);
+      if(!existing)return json({error:'Case not found'},404);
+      if(existing.revision!==brief.expectedRevision)
+        throw bad('Case changed; reload before editing',409);
+      const updated=applyOwnerCaseEvent(existing,
+        {type:'set-website-requirements',requirements:brief.requirements});
+      await updateBusinessCase(env,existing,updated);
+      await audit(env.DB,'fictional-planning-brief-imported',existing.caseId);
+      return json({case:caseCapabilities(updated),
+        note:'Only predefined fictional website choices were stored. No customer acceptance, build authorization or payment.'});
     }
     const draftPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/staging-draft$/);
     if(draftPath&&request.method==='POST'){
