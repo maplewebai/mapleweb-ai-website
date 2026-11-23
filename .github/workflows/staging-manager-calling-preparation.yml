@@ -77,6 +77,34 @@ jobs:
           console.log('PASS: separate staging services, separate D1, disabled calling/paid usage, guarded Manager workflow');
           NODE
 
+      - name: Verify Manager Worker Cloudflare bundle (dry run only)
+        working-directory: agents/manager
+        shell: bash
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const cfg = {
+            name: 'mapleweb-manager-v2-staging',
+            main: './src/worker.mjs',
+            compatibility_date: '2026-11-01',
+            workers_dev: true,
+            vars: { MODE: 'staging', BUSINESS_CASES_ENABLED: 'true' },
+            d1_databases: [{
+              binding: 'DB',
+              database_name: 'mapleweb-manager-staging-db',
+              database_id: '00000000-0000-4000-8000-000000000001'
+            }]
+          };
+          fs.writeFileSync('.workflow-manager-dry-run.jsonc', JSON.stringify(cfg, null, 2));
+          NODE
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --config .workflow-manager-dry-run.jsonc --outdir /tmp/mapleweb-manager-bundle
+          test -n "$(find /tmp/mapleweb-manager-bundle -maxdepth 2 -type f -print -quit)"
+          echo 'PASS: Manager Worker bundle built locally; no Cloudflare deployment'
+
       - name: Verify Calling Worker Cloudflare bundle (dry run only)
         working-directory: agents/calling-sales
         shell: bash
