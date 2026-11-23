@@ -2,10 +2,8 @@
 // Does not call AI, contact customers, publish sites, approve work or charge money.
 import {bad} from './security.mjs';
 import {normalizeWebsiteRequirements} from './order-requirements.mjs';
-import {runRole} from './roles.mjs';
+import {createSyntheticSitePreview} from './synthetic-site-preview.mjs';
 import {requireDb,audit} from './store.mjs';
-
-const label = value => value.replace(/-/g,' ');
 
 export function fictionalDraftFromCase(state) {
   if (!state || state.stage!=='QUOTE_READY' ||
@@ -13,14 +11,12 @@ export function fictionalDraftFromCase(state) {
     throw bad('A prepared owner-reviewed draft quote is required');
   }
   const requirements=normalizeWebsiteRequirements(state.requirements);
-  const business='Fictional '+label(requirements.businessCategory)+' sample';
-  const description='Fictional demonstration only. Website goal: '+
-    label(requirements.websiteGoal)+'. Style: '+label(requirements.style)+
-    '. Language: '+requirements.language+'. Requested pages: '+
-    requirements.pages.map(label).join(', ')+'. Requested features: '+
-    (requirements.features.length?requirements.features.map(label).join(', '):'none')+'.';
-  const draft=runRole('website-developer','build-draft',
-    {business,description},{nextVersion:1});
+  const preview=createSyntheticSitePreview(requirements);
+  const draft={status:'DRAFT_READY_FOR_QA',agent:'website-developer',
+    version:1,externallyHosted:false,html:preview.html,
+    pageSections:preview.pageSections,
+    featurePlaceholders:preview.featurePlaceholders,
+    realMultiPageSite:false,functionalIntegrations:false};
   return {...draft,synthetic:true,customerSiteCreated:false,
     kimiCalled:false,published:false,paymentCharged:false,
     note:'Fictional local staging preview; QA and verified approvals are still required'};
