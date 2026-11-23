@@ -8,18 +8,13 @@ export function prepareFictionalKimiBrief(requirements) {
   const r=normalizeWebsiteRequirements(requirements);
   const business='Fictional '+clean(r.businessCategory)+' sample';
   const goal=[
-    'Create a PRIVATE, clearly fictional and accessible HTML staging draft.',
-    'Use only placeholder text. Do not invent real customer names, addresses, prices or contact details.',
-    'Keep the draft free of scripts, forms, trackers, external assets, external links, data collection, checkout and real booking.',
-    'Requested goal: '+clean(r.websiteGoal)+'.',
-    'Visual style: '+clean(r.style)+'.',
-    'Language plan: '+(r.language==='en'?'English only':
-      r.language==='fr'?'French only':'English and French; translations still need human review')+'.',
-    'Requested sections: '+r.pages.map(clean).join(', ')+'.',
-    'Nonfunctional feature placeholders: '+
-      (r.features.length?r.features.map(clean).join(', '):'none')+'.',
-    'Include STAGING TEST and a noindex,nofollow robots meta tag.',
-    'Return source for PRIVATE REVIEW ONLY. Do not publish or imply that the site is complete.'
+    'STAGING TEST; noindex,nofollow. Fictional private HTML only; never publish.',
+    'No real names, contacts, prices, scripts, forms, tracking, links, assets, checkout or booking.',
+    'Accessible layout. Goal: '+clean(r.websiteGoal)+'; style: '+clean(r.style)+
+      '; language: '+(r.language==='en'?'English':
+        r.language==='fr'?'French':'English and French')+'.',
+    'Pages: '+r.pages.map(clean).join(', ')+
+      '. Features (not live): '+(r.features.length?r.features.map(clean).join(', '):'none')+'.'
   ].join(' ');
   if(business.length>80||goal.length>450)
     throw new Error('Synthetic Kimi brief exceeded existing bounded model contract');
