@@ -77,6 +77,29 @@ jobs:
           console.log('PASS: separate staging services, separate D1, disabled calling/paid usage, guarded Manager workflow');
           NODE
 
+      - name: Verify Calling Worker Cloudflare bundle (dry run only)
+        working-directory: agents/calling-sales
+        shell: bash
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          assert.equal(cfg.name, 'mapleweb-calling-sales-staging');
+          assert.ok(!cfg.route && !cfg.routes, 'No public routes permitted');
+          assert.equal(cfg.d1_databases?.[0]?.database_id, 'REPLACE_WITH_SEPARATE_STAGING_D1_DATABASE_ID');
+          // A synthetic ID is used only to check the local bundle, never to access D1.
+          cfg.d1_databases[0].database_id = '00000000-0000-4000-8000-000000000002';
+          fs.writeFileSync('.workflow-calling-dry-run.jsonc', JSON.stringify(cfg, null, 2));
+          NODE
+          npx --yes wrangler@4 deploy --dry-run --config .workflow-calling-dry-run.jsonc --outdir /tmp/mapleweb-calling-bundle
+          test -n "$(find /tmp/mapleweb-calling-bundle -maxdepth 2 -type f -print -quit)"
+          echo 'PASS: Calling Worker bundle built locally; no Cloudflare deployment or phone calls'
+
       - name: Report preparation scope
         if: always()
         run: |
