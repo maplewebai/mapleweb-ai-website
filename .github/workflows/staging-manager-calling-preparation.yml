@@ -5,6 +5,15 @@ on:
     branches: [mapleweb-ai-agents]
     paths:
       - '.github/workflows/staging-manager-calling-preparation.yml'
+      - 'agents/manager/src/**'
+      - 'agents/manager/tests/**'
+      - 'agents/manager/package.json'
+      - 'agents/manager/migrations/**'
+      - 'agents/manager/demo/**'
+      - 'agents/calling-sales/src/**'
+      - 'agents/calling-sales/tests/**'
+      - 'agents/calling-sales/wrangler.jsonc'
+      - 'agents/calling-sales/package.json'
   workflow_dispatch:
 
 permissions:
