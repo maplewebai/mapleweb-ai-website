@@ -1,0 +1,20 @@
+name: Test Calling Sales Agent (no calls or deploy)
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/calling-sales/**', '.github/workflows/test-calling-sales.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check
+        working-directory: agents/calling-sales
+      - run: npm test
+        working-directory: agents/calling-sales
