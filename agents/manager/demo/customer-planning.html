@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <title>MapleWeb AI — Private Planning Chat Demo</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b101b;--panel:#131c2a;--card:#1b2938;--line:#354657;--text:#f6f7fa;--muted:#b9c7d6;--accent:#80e3d3;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 70% 0%,#182c43 0%,var(--bg) 55%);color:var(--text);line-height:1.5}
+    .shell{max-width:850px;min-height:100dvh;margin:auto;display:flex;flex-direction:column;padding:22px}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    h1{font-size:clamp(1.15rem,3vw,1.6rem);margin:0;letter-spacing:.01em}
+    header p{color:var(--muted);font-size:.9rem;margin:3px 0}
+    .pill{border:1px solid #61806c;color:#c7eadb;padding:5px 10px;border-radius:999px;font-size:.75rem;font-weight:700;white-space:nowrap}
+    .notice{margin:18px 0;border:1px solid #7d6541;background:#33291d;border-radius:12px;padding:12px;color:#ffe2b3;font-size:.88rem}
+    main{flex:1;background:rgba(17,26,39,.92);border:1px solid var(--line);border-radius:20px;display:flex;flex-direction:column;min-height:460px;overflow:hidden;box-shadow:0 20px 80px #0006}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);gap:12px}
+    .toolbar strong{font-size:.9rem}.toolbar span{font-size:.83rem;color:var(--muted)}
+    button{cursor:pointer;font:inherit}
+    .secondary{background:transparent;border:1px solid var(--line);border-radius:9px;padding:7px 12px;color:var(--text)}
+    .secondary:hover,.secondary:focus-visible{border-color:var(--accent)}
+    .chat{padding:22px 18px 12px;display:flex;flex-direction:column;gap:13px;min-height:310px;overflow-y:auto}
+    .message{max-width:90%;border-radius:15px;padding:12px 15px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .assistant{align-self:flex-start;background:var(--card);border:1px solid var(--line)}
+    .visitor{align-self:flex-end;background:#204b4b;border:1px solid #397c76}
+    .who{display:block;color:var(--muted);font-size:.71rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+    .choices{padding:16px 18px 22px;border-top:1px solid var(--line)}
+    .prompt{font-size:.83rem;color:var(--muted);margin:0 0 10px}
+    .options{display:flex;flex-wrap:wrap;gap:9px}
+    .choice{border:1px solid #546778;background:var(--card);color:var(--text);padding:10px 13px;border-radius:11px;min-height:42px;transition:.15s}
+    .choice:hover,.choice:focus-visible{border-color:var(--accent);background:#234050}
+    .multi{display:inline-flex;gap:8px;align-items:center;padding:9px 11px;border:1px solid #546778;border-radius:10px;cursor:pointer}
+    .multi:focus-within{outline:2px solid var(--accent)}
+    .multi input{accent-color:var(--accent);width:17px;height:17px}
+    .continue{margin-top:13px;background:var(--accent);border:0;border-radius:10px;padding:10px 18px;color:#062125;font-weight:750}
+    .error{color:#ffbbad;font-size:.9rem;margin-top:10px;min-height:1.3rem}
+    .faq{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);padding:14px 18px}
+    .faq button{font-size:.76rem;border:1px solid #475e72;border-radius:999px;background:transparent;color:var(--muted);padding:7px 10px}
+    .faq button:focus-visible,.faq button:hover{color:var(--text);border-color:var(--accent)}
+    .result{padding:16px 18px;border-top:1px solid var(--line);background:#122c2b}
+    .result strong{color:var(--accent)}
+    pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#dbe9ec;padding:10px;border:1px solid #517575;border-radius:8px}
+    footer{color:var(--muted);padding:14px 4px;font-size:.77rem;text-align:center}
+    button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+    @media(max-width:570px){.shell{padding:10px}.message{max-width:100%}.chat{padding:15px 12px}.options{flex-direction:column}.choice{text-align:left}}
+    @media(prefers-reduced-motion:reduce){.choice{transition:none}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <h1>MapleWeb AI <span aria-hidden="true">✦</span> Website Planner</h1>
+        <p>A simple, step-by-step planning conversation</p>
+      </div>
+      <span class="pill">PRIVATE OFFLINE DEMO</span>
+    </header>
+    <p class="notice" role="note"><strong>Demonstration only.</strong> This page does not contact MapleWeb AI, save personal information, accept real customer orders, call AI services, charge money, or publish websites. Choose fictional website requirements only.</p>
+    <main>
+      <div class="toolbar"><strong>Planning conversation</strong><div><span id="progress">0 of 6</span> <button type="button" class="secondary" id="restart">Restart</button></div></div>
+      <div class="chat" id="messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="Website planning conversation"></div>
+      <section class="choices" aria-label="Website planning choices" id="choices">
+        <p class="prompt" id="prompt">Start by choosing a fictional business category.</p>
+        <div class="options" id="options"></div>
+        <button type="button" class="continue" id="continue" hidden>Continue</button>
+        <div class="error" id="error" role="alert"></div>
+      </section>
+      <div class="faq" aria-label="Frequently asked questions" id="faq"></div>
+      <div class="result" id="result" hidden>
+        <p><strong>Fictional website brief ready for owner review</strong></p>
+        <p id="estimate"></p>
+        <p>Not a fixed quote or customer order. No data was sent or saved. For a real order, a secure customer portal and consent process must first be activated.</p>
+        <details><summary>Review fictional planning choices (JSON)</summary><pre id="brief"></pre></details>
+      </div>
+    </main>
+    <footer>MapleWeb AI development demo · No account connection · No external requests · No real services enabled</footer>
+  </div>
+  <script>
+    'use strict';
+    // All values below match the Manager's fixed-choice planning schema.
+    // This client-only demo never calls a server or stores any information.
+    const questions=[
+      {field:'businessCategory',prompt:'What kind of fictional business needs a website?',values:['restaurant','retail','professional-services','home-services','health-wellness','education','portfolio','other']},
+      {field:'websiteGoal',prompt:'What should the website help that business do?',values:['information','leads','showcase','catalog','booking-inquiry']},
+      {field:'style',prompt:'Which visual style looks best?',values:['modern','classic','minimal','bold']},
+      {field:'language',prompt:'Which languages should it use?',values:['en','fr','en-fr']},
+      {field:'pages',prompt:'Choose the sample website sections. Home is required.',values:['home','about','services','products','menu','portfolio','faq','contact','booking','privacy'],multi:true},
+      {field:'features',prompt:'Select any optional demonstration features, or none.',values:['gallery','faq','catalog','menu','contact-section','booking-inquiry','multilingual','accessibility'],multi:true}
+    ];
+    const faq={
+      price:'Website planning ranges start at $500 CAD. The final fixed quote, taxes and external fees require owner review.',
+      timing:'A delivery date depends on the reviewed project scope; this demo does not promise a deadline.',
+      preview:'Real customers would need a private, reviewed preview and approval. That process is not activated.',
+      payments:'Payments are disabled. Never share payment details in this demo.',
+      booking:'A booking inquiry is only a placeholder here. No appointment is scheduled.',
+      privacy:'This demonstration collects no contact details and sends no information to any server.'
+    };
+    const el=id=>document.getElementById(id);
+    const answers={};
+    let index=0;
+    const human=x=>x.replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
+    function message(from,value){
+      const node=document.createElement('div');
+      node.className='message '+(from==='MapleWeb AI'?'assistant':'visitor');
+      const heading=document.createElement('span');
+      heading.className='who';heading.textContent=from;
+      const body=document.createElement('span');body.textContent=value;
+      node.append(heading,body);el('messages').append(node);
+      node.scrollIntoView({block:'nearest'});
+    }
+    function error(s){el('error').textContent=s;}
+    function choose(value){
+      const q=questions[index];
+      answers[q.field]=value;
+      message('You',Array.isArray(value)?(value.length?value.map(human).join(', '):'No extra features'):human(value));
+      index++;el('progress').textContent=index+' of '+questions.length;
+      render();
+    }
+    function render(){
+      el('options').replaceChildren();el('continue').hidden=true;error('');
+      if(index===questions.length){
+        el('choices').hidden=true;
+        const tier=answers.pages.length<=2?0:answers.pages.length<=5?1:2;
+        const prices=[[500,800],[900,1500],[1500,2200]];
+        el('estimate').textContent='Illustrative starting range: CAD $'+prices[tier][0]+'–$'+prices[tier][1]+'. Complex features may require a different package.';
+        el('brief').textContent=JSON.stringify({synthetic:true,requirements:answers},null,2);
+        el('result').hidden=false;
+        message('MapleWeb AI','Planning complete. Your fictional brief is ready for owner review. No request was sent.');
+        return;
+      }
+      const q=questions[index];el('prompt').textContent=q.prompt;
+      message('MapleWeb AI',q.prompt);
+      if(q.multi){
+        for(const item of q.values){
+          const label=document.createElement('label');label.className='multi';
+          const input=document.createElement('input');
+          input.type='checkbox';input.value=item;input.name='planning-'+q.field;
+          const span=document.createElement('span');span.textContent=human(item);
+          label.append(input,span);el('options').append(label);
+        }
+        el('continue').hidden=false;
+      }else{
+        for(const item of q.values){
+          const btn=document.createElement('button');btn.type='button';
+          btn.className='choice';btn.textContent=human(item);
+          btn.addEventListener('click',()=>choose(item));
+          el('options').append(btn);
+        }
+      }
+    }
+    function reset(){
+      Object.keys(answers).forEach(k=>delete answers[k]);
+      index=0;el('messages').replaceChildren();el('result').hidden=true;
+      el('choices').hidden=false;el('progress').textContent='0 of 6';
+      message('MapleWeb AI','Welcome! I can guide you through a fictional website plan. Please choose from the options below. No personal information is needed.');
+      render();
+    }
+    el('continue').addEventListener('click',()=>{
+      if(index>=questions.length)return;
+      const q=questions[index];if(!q.multi)return;
+      const selected=Array.from(el('options').querySelectorAll('input:checked'),x=>x.value);
+      if(q.field==='pages'&&!selected.includes('home'))return error('Choose Home to continue.');
+      if(q.field==='pages'&&answers.websiteGoal==='booking-inquiry'&&!selected.includes('booking'))
+        return error('Choose Booking for booking inquiries.');
+      if(q.field==='features'&&selected.includes('multilingual')&&answers.language!=='en-fr')
+        return error('Multilingual requires English and French. Restart to change language.');
+      choose(selected);
+    });
+    el('restart').addEventListener('click',reset);
+    Object.entries(faq).forEach(([topic,reply])=>{
+      const btn=document.createElement('button');btn.type='button';
+      btn.textContent=human(topic);
+      btn.addEventListener('click',()=>message('MapleWeb AI',reply));
+      el('faq').append(btn);
+    });
+    reset();
+  </script>
+</body>
+</html>
