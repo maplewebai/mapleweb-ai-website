@@ -1,0 +1,12 @@
+{
+  "name": "mapleweb-calling-sales-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check src/worker.mjs && node --check src/voice.mjs && node --check src/security.mjs && node --check src/storage.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
