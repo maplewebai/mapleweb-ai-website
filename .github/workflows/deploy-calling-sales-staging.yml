@@ -1,0 +1,191 @@
+name: Deploy isolated Calling Sales staging ONLY after owner approval
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/calling-sales/REQUEST_STAGING_DEPLOY.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mapleweb-calling-sales-isolated-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      EXPECTED_ACCOUNT_ID: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+      STAGING_CALLING_D1_ID: ${{ secrets.MAPLEWEB_STAGING_CALLING_D1_DATABASE_ID }}
+      STAGING_MANAGER_D1_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
+      CALLING_ADMIN_SECRET: ${{ secrets.MAPLEWEB_STAGING_CALLING_ADMIN_TOKEN }}
+      CALLING_HASH_SECRET: ${{ secrets.MAPLEWEB_STAGING_CALLING_HASH_SECRET }}
+      FREE_TIER_VERIFIED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }}
+      CALLING_STAGING_DEPLOY_APPROVED: ${{ vars.MAPLEWEB_STAGING_CALLING_DEPLOY_APPROVED }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mapleweb-ai-agents
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test Calling Agent without calls or provider credentials
+        working-directory: agents/calling-sales
+        run: |
+          npm run check
+          npm test
+
+      - name: Require owner approval and verify exact isolated Cloudflare account and D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID EXPECTED_ACCOUNT_ID STAGING_CALLING_D1_ID CALLING_ADMIN_SECRET CALLING_HASH_SECRET; do
+            if [ -z "$(printenv "$key")" ]; then
+              echo "::error::Missing required private staging setting: $key"
+              exit 1
+            fi
+          done
+          if [ "$CALLING_STAGING_DEPLOY_APPROVED" != 'APPROVED_ISOLATED_STAGING_NO_CALLS' ]; then
+            echo '::error::Owner has not independently authorized isolated Calling staging deployment.'
+            exit 1
+          fi
+          if [ "$FREE_TIER_VERIFIED" != 'CONFIRMED_FREE_TIER' ]; then
+            echo '::error::Owner has not verified proposed no-charge staging resources.'
+            exit 1
+          fi
+          if ! [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[a-fA-F0-9]{32}$ ]] ||
+             [ "$CLOUDFLARE_ACCOUNT_ID" != "$EXPECTED_ACCOUNT_ID" ]; then
+            echo '::error::Cloudflare account not the exact owner-verified staging account.'
+            exit 1
+          fi
+          if ! [[ "$STAGING_CALLING_D1_ID" =~ ^[a-fA-F0-9-]{36}$ ]] ||
+             [ "$STAGING_CALLING_D1_ID" = "$STAGING_MANAGER_D1_ID" ]; then
+            echo '::error::Calling D1 ID missing, invalid, or same as Manager D1.'
+            exit 1
+          fi
+          for value in "$CALLING_ADMIN_SECRET" "$CALLING_HASH_SECRET"; do
+            if [ "$(printf %s "$value" | wc -c)" -lt 32 ]; then
+              echo '::error::Private Calling token or hash secret too short.'
+              exit 1
+            fi
+          done
+          account_status=$(curl --silent --show-error --output /tmp/mapleweb-calling-account.json --write-out '%{http_code}' --connect-timeout 10 --max-time 25 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID")
+          if [ "$account_status" != 200 ] ||
+             ! jq -e --arg id "$CLOUDFLARE_ACCOUNT_ID" '.success == true and .result.id == $id' /tmp/mapleweb-calling-account.json >/dev/null; then
+            echo '::error::Cloudflare account permission/identity not verified.'
+            exit 1
+          fi
+          d1_status=$(curl --silent --show-error --output /tmp/mapleweb-calling-db.json --write-out '%{http_code}' --connect-timeout 10 --max-time 25 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$STAGING_CALLING_D1_ID")
+          if [ "$d1_status" != 200 ] ||
+             ! jq -e --arg id "$STAGING_CALLING_D1_ID" '.success == true and .result.uuid == $id and .result.name == "mapleweb-calling-sales-staging-db"' /tmp/mapleweb-calling-db.json >/dev/null; then
+            echo '::error::Exact separate Calling staging D1 not verified; refusing production DB.'
+            exit 1
+          fi
+          worker_status=$(curl --silent --show-error --output /tmp/mapleweb-calling-worker.json --write-out '%{http_code}' --connect-timeout 10 --max-time 25 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/mapleweb-calling-sales-staging")
+          if [ "$worker_status" != 404 ]; then
+            echo '::error::Calling Worker exists or cannot be checked. Refusing overwrite.'
+            exit 1
+          fi
+          echo 'Owner approval, no-charge resources and exact separate unused staging resources verified.'
+
+      - name: Create ephemeral Calling Worker configuration with all calls and costs OFF
+        working-directory: agents/calling-sales
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          assert.equal(cfg.name,'mapleweb-calling-sales-staging');
+          assert.equal(cfg.main,'src/worker.mjs');
+          assert.equal(cfg.workers_dev,true);
+          assert.ok(!cfg.route && !cfg.routes && !cfg.triggers);
+          assert.equal(cfg.d1_databases?.length,1);
+          assert.equal(cfg.d1_databases[0].binding,'CALLING_DB');
+          assert.equal(cfg.d1_databases[0].database_name,'mapleweb-calling-sales-staging-db');
+          assert.equal(cfg.d1_databases[0].database_id,'REPLACE_WITH_SEPARATE_STAGING_D1_DATABASE_ID');
+          for (const key of ['CALLING_INBOUND_ENABLED','CALLING_OUTBOUND_ENABLED',
+            'CALLING_PAID_USAGE_APPROVED','CALLING_AUTOMATED_OUTREACH_APPROVED',
+            'CALLING_AI_ENABLED','CALLING_CUSTOMER_DATA_TRANSFER_APPROVED']) {
+            assert.equal(cfg.vars[key],'false',key+' must be off');
+          }
+          assert.equal(cfg.vars.CALLING_OUTBOUND_TEST_ONLY,'true');
+          cfg.d1_databases[0].database_id=process.env.STAGING_CALLING_D1_ID;
+          cfg.d1_databases[0].migrations_dir='./migrations';
+          fs.writeFileSync('.workflow-calling-staging.jsonc',JSON.stringify(cfg,null,2));
+          NODE
+
+      - name: Validate Calling Worker bundle (no deployment yet)
+        working-directory: agents/calling-sales
+        run: npx --yes wrangler@4 deploy --dry-run --config .workflow-calling-staging.jsonc
+
+      - name: Apply schema only to preverified isolated Calling D1
+        working-directory: agents/calling-sales
+        run: npx --yes wrangler@4 d1 migrations apply mapleweb-calling-sales-staging-db --remote --yes --config .workflow-calling-staging.jsonc
+
+      - name: Deploy one isolated Calling Worker with all phone controls OFF
+        working-directory: agents/calling-sales
+        run: npx --yes wrangler@4 deploy --config .workflow-calling-staging.jsonc
+
+      - name: Store only internal authentication/hash secrets; no Twilio or Kimi keys
+        working-directory: agents/calling-sales
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf %s "$CALLING_ADMIN_SECRET" | npx --yes wrangler@4 secret put CALLING_ADMIN_TOKEN --name mapleweb-calling-sales-staging
+          printf %s "$CALLING_HASH_SECRET" | npx --yes wrangler@4 secret put CALLING_HASH_SECRET --name mapleweb-calling-sales-staging
+
+      - name: Verify protected live staging endpoint and disabled calling controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 10 --max-time 25 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            -o /tmp/mapleweb-calling-subdomain.json
+          subdomain=$(jq -er 'select(.success == true) | .result.subdomain' /tmp/mapleweb-calling-subdomain.json)
+          if ! [[ "$subdomain" =~ ^[a-z0-9-]+$ ]]; then
+            echo '::error::Cloudflare Workers staging subdomain not verified.'
+            exit 1
+          fi
+          url="https://mapleweb-calling-sales-staging.$subdomain.workers.dev"
+          success=0
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --connect-timeout 10 --max-time 15 "$url/health" -o /tmp/mapleweb-calling-health.json &&
+               jq -e '.service == "mapleweb-calling-sales-agent" and .liveProviderVerified == false' /tmp/mapleweb-calling-health.json >/dev/null &&
+               curl -fsS --connect-timeout 10 --max-time 15 \
+                 --header "Authorization: Bearer $CALLING_ADMIN_SECRET" \
+                 "$url/admin/status" -o /tmp/mapleweb-calling-status.json &&
+               jq -e '.service == "mapleweb-calling-sales-agent" and .staging == true and .databaseConfigured == true and .twilioConfigured == false and .inboundEnabled == false and .outboundEnabled == false and .paidUsageApproved == false and .aiEnabled == false' /tmp/mapleweb-calling-status.json >/dev/null; then
+              success=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$success" != 1 ]; then
+            echo '::error::Worker staging deployment occurred but safe admin status was not verified.'
+            exit 1
+          fi
+          echo "Verified isolated Calling staging Worker only, all phone and paid services disabled: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record explicit exclusions
+        if: always()
+        run: |
+          echo 'Isolated Calling Worker only. No public site/main changes, Twilio keys, Kimi keys, real calls, customer information, payments or legacy eight-role deployment.' >> "$GITHUB_STEP_SUMMARY"
