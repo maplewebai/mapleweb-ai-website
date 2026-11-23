@@ -8,6 +8,7 @@ import {inspectCloudflare,checkRoleHealth} from './cloudflare.mjs';
 import {createKimiModelApi} from './kimi-model-api.mjs';
 import {stripeTestStatus,createStripeTestCheckout,receiveStripeTestWebhook} from './stripe-test.mjs';
 import {newBusinessCase,applyOwnerCaseEvent,caseCapabilities} from './business-cases.mjs';
+import {createCaseStagingDraft} from './case-staging-draft.mjs';
 import {readBusinessCase,addBusinessCase,updateBusinessCase,listBusinessCases} from './business-cases-store.mjs';
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
@@ -96,6 +97,24 @@ export async function handle(request,env){
       await updateBusinessCase(env,existing,updated);
       await audit(env.DB,'business-case-event',event.type+' on '+existing.caseId);
       return json({case:caseCapabilities(updated)});
+    }
+    const draftPath=path.match(/^\\/api\\/business\\/cases\\/([A-Z0-9_-]{3,30})\\/staging-draft$/);
+    if(draftPath&&request.method==='POST'){
+      const payload=await readJson(request,1000);
+      if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+        Object.keys(payload).length!==2||
+        !Object.hasOwn(payload,'synthetic')||!Object.hasOwn(payload,'expectedRevision')||
+        payload.synthetic!==true||!Number.isSafeInteger(payload.expectedRevision)||
+        payload.expectedRevision<1)
+        throw bad('Fictional staging draft requires synthetic:true and current expectedRevision');
+      const existing=await readBusinessCase(env,draftPath[1]);
+      if(!existing)return json({error:'Case not found'},404);
+      if(existing.revision!==payload.expectedRevision)
+        throw bad('Case changed; reload before creating a draft',409);
+      const result=await createCaseStagingDraft(env,existing);
+      return json({status:'STAGING_DRAFT_READY_FOR_QA',
+        project:projectView(await project(env.DB,result.projectId)),
+        draft:result.draft},201);
     }
     return methodError();
   }
