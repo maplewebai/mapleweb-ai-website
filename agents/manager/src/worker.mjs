@@ -203,16 +203,29 @@ export async function handle(request,env,callingFetchImpl=fetch){
     const prev=await project(db,p.projectId);
     const current=prev||defaultProject(p.projectId);
     let input=p.input||{};
-    // QA always checks the Manager's saved preview, not untrusted QA-passed claims.
+    let savedCaseAudit=null;
+    // QA always checks the Manager's saved preview, never untrusted client HTML.
+    // For quoted fictional cases, missing requested sections or unsafe navigation
+    // must block local QA regardless of the generic HTML quality-checker result.
     if(p.role==='quality-checker'&&p.action==='review'){
       if(!current.version)throw bad('Build a staging draft first');
       input={html:current.draft_html};
+      if(env.BUSINESS_CASES_ENABLED==='true'){
+        const relatedCase=await readBusinessCase(env,p.projectId);
+        if(relatedCase?.requirements)
+          savedCaseAudit=auditSyntheticSitePreview(current.draft_html,relatedCase.requirements);
+      }
     }
     const ctx={nextVersion:current.version+1,currentVersion:current.version,
       qaPassed:current.qa_passed===1,revisionOpen:current.revision_open===1,
       ownerApprovedVersion:current.owner_approved,customerApprovedVersion:current.customer_approved};
     if(p.role==='website-developer'&&p.action==='request-revision'&&!current.version)throw bad('No existing draft to revise');
     const result=await runStagingRole(env,p.role,p.action,input,ctx);
+    if(savedCaseAudit){
+      result.casePreviewStructure=savedCaseAudit;
+      if(savedCaseAudit.status!=='LOCAL_STRUCTURE_CHECKS_PASSED')
+        result.status='LOCAL_QA_FAILED';
+    }
     if(p.role==='website-developer'&&p.action==='build-draft'){
       current.version=result.version;current.draft_html=result.html;
       current.qa_passed=0;current.revision_open=0;current.owner_approved=0;current.customer_approved=0;
