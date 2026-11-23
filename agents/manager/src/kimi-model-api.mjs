@@ -1,5 +1,6 @@
 // Optional Kimi model API bridge; NOT the Kimi Build website-app API.
 // Safe by default: missing secret or explicit hosting-side approval => no network call.
+import {reviewUntrustedKimiSource} from './kimi-source-review.mjs';
 const ENDPOINT = 'https://api.moonshot.ai/v1/chat/completions';
 const MODEL = 'kimi-k2.6';
 const contact = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?:\+?\d[ .()-]*){10,}/i;
@@ -69,8 +70,11 @@ export function createKimiModelApi(env = {}, fetchImpl = fetch) {
       const source = result?.choices?.[0]?.message?.content;
       if (typeof source !== 'string' || source.length === 0 || source.length > 25000)
         fail('Kimi model API returned an unusable draft', 502);
-      // Treat model output as untrusted text; never execute, save as approved, or publish it here.
-      return {status: 'UNTRUSTED_DRAFT_REQUIRES_QA', model: MODEL, source,
+      // Static source screening is advisory. Always require isolated preview and
+      // independent full QA; never execute, save as approved, or publish here.
+      const sourceReview=reviewUntrustedKimiSource(source);
+      return {status: 'UNTRUSTED_DRAFT_REQUIRES_QA', model: MODEL, source,sourceReview,
+        browserPreviewAuthorized:false,customerPublishAuthorized:false,
         isKimiBuildOutput: false, qaPassed: false, approved: false,
         externallyHosted: false, published: false, paidUsageMayHaveOccurred: true};
     }
