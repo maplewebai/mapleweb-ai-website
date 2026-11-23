@@ -19,6 +19,7 @@ import {managerBusinessReadiness} from './business-readiness.mjs';
 import {buildFictionalSiteBundle,auditFictionalSiteBundle} from './fictional-site-bundle.mjs';
 import {submitFictionalOrder,ownerFictionalOrderProgress} from './fictional-order-intake.mjs';
 import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-order-queue.mjs';
+import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -174,6 +175,15 @@ export async function handle(request,env,callingFetchImpl=fetch){
       return json({caseId:existing.caseId,projectVersion:saved.version,
         localQaPreviouslyRecorded:saved.qa_passed===1,
         ...check});
+    }
+    const kimiBriefPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/kimi-brief$/);
+    if(kimiBriefPath&&request.method==='GET'){
+      const existing=await readBusinessCase(env,kimiBriefPath[1]);
+      if(!existing)return json({error:'Case not found'},404);
+      if(existing.stage!=='QUOTE_READY'||existing.quote?.status!=='DRAFT_NOT_SENT')
+        throw bad('Owner-reviewed draft quote required before preparing a Kimi brief');
+      return json({caseId:existing.caseId,
+        ...fictionalKimiBriefReadiness(existing.requirements)});
     }
     const bundlePath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/fictional-bundle$/);
     if(bundlePath&&request.method==='GET'){
