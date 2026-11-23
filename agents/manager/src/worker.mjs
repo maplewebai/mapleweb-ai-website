@@ -13,6 +13,7 @@ import {readBusinessCase,addBusinessCase,updateBusinessCase,listBusinessCases} f
 import {rejectHeadquartersAvailabilityChange,rejectUnapprovedCustomerSuspension} from './site-protection.mjs';
 import {callingSalesState,callingSalesStatus,callingSalesAction} from './calling-sales.mjs';
 import {planningChat,planningBriefForCase} from './planning-chat.mjs';
+import {privateBusinessDashboard} from './business-dashboard.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -83,6 +84,11 @@ export async function handle(request,env,callingFetchImpl=fetch){
   // customer contact information, AI spend, or persistence of conversations.
   if(path==='/api/business/planning-chat'&&request.method==='POST')
     return json(planningChat(await readJson(request,1800)));
+  if(path==='/api/business/dashboard'&&request.method==='GET'){
+    if(env.BUSINESS_CASES_ENABLED!=='true')
+      throw bad('Private business-case operations are not enabled',503);
+    return json(await privateBusinessDashboard(env));
+  }
   // Business-case API stores non-personal metadata in a private D1 only.
   // Explicit opt-in is required even on staging; no customer communications,
   // Kimi calls, payments, or publishing can be triggered by these routes.
