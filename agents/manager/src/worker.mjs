@@ -16,6 +16,7 @@ import {callingSalesState,callingSalesStatus,callingSalesAction} from './calling
 import {planningChat,planningBriefForCase} from './planning-chat.mjs';
 import {privateBusinessDashboard} from './business-dashboard.mjs';
 import {managerBusinessReadiness} from './business-readiness.mjs';
+import {buildFictionalSiteBundle,auditFictionalSiteBundle} from './fictional-site-bundle.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -154,6 +155,16 @@ export async function handle(request,env,callingFetchImpl=fetch){
       return json({caseId:existing.caseId,projectVersion:saved.version,
         localQaPreviouslyRecorded:saved.qa_passed===1,
         ...check});
+    }
+    const bundlePath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/fictional-bundle$/);
+    if(bundlePath&&request.method==='GET'){
+      const existing=await readBusinessCase(env,bundlePath[1]);
+      if(!existing)return json({error:'Case not found'},404);
+      if(existing.stage!=='QUOTE_READY'||existing.quote?.status!=='DRAFT_NOT_SENT')
+        throw bad('Owner-reviewed draft quote required before a fictional site bundle');
+      const bundle=buildFictionalSiteBundle(existing.requirements);
+      return json({caseId:existing.caseId,caseRevision:existing.revision,
+        bundle,audit:auditFictionalSiteBundle(bundle,existing.requirements)});
     }
     const draftPath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/staging-draft$/);
     if(draftPath&&request.method==='POST'){
