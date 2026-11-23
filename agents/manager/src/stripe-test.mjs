@@ -106,14 +106,39 @@ export async function verifyStripeTestSignature(raw,signature,secret,now=Math.fl
   }
   return false;
 }
+// Read *at most* 64 KiB before signature verification. Never buffer an
+// unbounded public webhook body, even when Content-Length is absent or forged.
+export async function readStripeWebhookBody(request,maxBytes=65536) {
+  const size=request.headers.get('content-length');
+  if(size!==null && (!/^\d+$/.test(size)||Number(size)>maxBytes))
+    throw bad('Webhook too large',413);
+  const reader=request.body?.getReader();
+  if(!reader)throw bad('Missing Stripe test webhook body');
+  let total=0;const chunks=[];
+  try{
+    for(;;){
+      const {done,value}=await reader.read();
+      if(done)break;
+      total+=value.byteLength;
+      if(total>maxBytes){
+        await reader.cancel().catch(()=>{});
+        throw bad('Webhook too large',413);
+      }
+      chunks.push(value);
+    }
+  }finally{reader.releaseLock();}
+  const data=new Uint8Array(total);let at=0;
+  for(const chunk of chunks){data.set(chunk,at);at+=chunk.length;}
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(data);}
+  catch{throw bad('Malformed Stripe test webhook text');}
+}
+
 export async function receiveStripeTestWebhook(env,request) {
   if(env.STRIPE_TEST_CHECKOUT_ENABLED!=='true'||
      !testKey(env)||env.BUSINESS_CASES_ENABLED!=='true'||
      typeof env.STRIPE_TEST_WEBHOOK_SECRET!=='string')fail();
   const db=requireDb(env);
-  if(Number(request.headers.get('content-length'))>65536)throw bad('Webhook too large',413);
-  const raw=await request.text();
-  if(new TextEncoder().encode(raw).length>65536)throw bad('Webhook too large',413);
+  const raw=await readStripeWebhookBody(request);
   if(!await verifyStripeTestSignature(raw,request.headers.get('stripe-signature'),
       env.STRIPE_TEST_WEBHOOK_SECRET))
     throw bad('Invalid Stripe test webhook signature',401);
