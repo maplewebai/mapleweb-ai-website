@@ -1,0 +1,43 @@
+name: Fail-closed website preview QA before delivery (NO DEPLOY)
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['staging-sites/**']
+permissions:
+  contents: read
+jobs:
+  browser-qa:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install headless browser test dependencies
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Test every staging website in 4 screen sizes, block if none exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d staging-sites ]; then echo "::error::No preview candidates. Release blocked."; exit 1; fi
+          mapfile -d '' sites < <(find staging-sites -name index.html -type f -print0)
+          if [ "${#sites[@]}" -eq 0 ]; then echo "::error::No index.html candidates. Release blocked."; exit 1; fi
+          for site in "${sites[@]}"; do
+            echo "Checking $site"
+            node tools/qa/verify-preview.mjs "$site"
+          done
+          echo "Browser QA passed for ${#sites[@]} staging preview(s). Device-specific testing and owner approval are separate requirements." >> "$GITHUB_STEP_SUMMARY"
+      - name: Deliver staging previews ONLY if browser QA passes
+        uses: actions/upload-artifact@v4
+        with:
+          name: passed-staging-previews-not-public
+          path: staging-sites/
+          retention-days: 7
