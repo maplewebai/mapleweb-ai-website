@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: mapleweb-ai-agents
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@v4
@@ -138,7 +138,7 @@ jobs:
 
       - name: Apply schema only to preverified isolated Calling D1
         working-directory: agents/calling-sales
-        run: npx --yes wrangler@4 d1 migrations apply mapleweb-calling-sales-staging-db --remote --yes --config .workflow-calling-staging.jsonc
+        run: npx --yes wrangler@4 d1 migrations apply mapleweb-calling-sales-staging-db --remote --config .workflow-calling-staging.jsonc
 
       - name: Deploy one isolated Calling Worker with all phone controls OFF
         working-directory: agents/calling-sales

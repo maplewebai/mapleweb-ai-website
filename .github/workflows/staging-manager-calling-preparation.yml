@@ -5,6 +5,8 @@ on:
     branches: [mapleweb-ai-agents]
     paths:
       - '.github/workflows/staging-manager-calling-preparation.yml'
+      - '.github/workflows/deploy-single-manager-staging.yml'
+      - '.github/workflows/deploy-calling-sales-staging.yml'
       - 'agents/manager/src/**'
       - 'agents/manager/tests/**'
       - 'agents/manager/package.json'
@@ -12,6 +14,7 @@ on:
       - 'agents/manager/demo/**'
       - 'agents/calling-sales/src/**'
       - 'agents/calling-sales/tests/**'
+      - 'agents/calling-sales/migrations/**'
       - 'agents/calling-sales/wrangler.jsonc'
       - 'agents/calling-sales/package.json'
   workflow_dispatch:
@@ -27,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: mapleweb-ai-agents
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:

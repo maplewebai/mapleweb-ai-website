@@ -41,7 +41,7 @@ test('Calling staging deploy starts all real calls, Kimi and costs disabled',()=
 });
 test('Calling staging deploy dry runs, limits database, saves private Worker secrets and verifies',()=>{
   assert.match(workflow,/npx --yes wrangler@4 deploy --dry-run/);
-  assert.match(workflow,/d1 migrations apply mapleweb-calling-sales-staging-db --remote --yes/);
+  assert.match(workflow,/d1 migrations apply mapleweb-calling-sales-staging-db --remote --config/);
   assert.match(workflow,/wrangler@4 deploy --config/);
   assert.match(workflow,/secret put CALLING_ADMIN_TOKEN/);
   assert.match(workflow,/secret put CALLING_HASH_SECRET/);

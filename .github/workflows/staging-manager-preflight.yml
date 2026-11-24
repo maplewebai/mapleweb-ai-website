@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: mapleweb-ai-agents
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -53,6 +53,10 @@ jobs:
           check "MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID (repository variable)" "$CF_EXPECTED"
           check "MAPLEWEB_STAGING_OWNER_TOKEN (>=32 chars)" "$OWNER_TOKEN"
           check "MAPLEWEB_STAGING_D1_DATABASE_ID (separate verified staging DB)" "$STAGING_D1_ID"
+          if [ -n "$CF_ACCOUNT" ] && ! [[ "$CF_ACCOUNT" =~ ^[a-fA-F0-9]{32}$ ]]; then
+            echo "::error::Cloudflare account ID has an invalid format"
+            missing=1
+          fi
           if [ "${#OWNER_TOKEN}" -gt 0 ] && [ "${#OWNER_TOKEN}" -lt 32 ]; then
             echo "::error::Owner token must have at least 32 characters"
             missing=1
@@ -78,5 +82,5 @@ jobs:
             echo "::error::Unexpected Cloudflare account identity"
             exit 1
           }
-          echo "Cloudflare staging preflight passed. This workflow never deploys."
-          echo "### Cloudflare staging preflight: READY FOR SEPARATE OWNER-APPROVED DEPLOYMENT" >> "$GITHUB_STEP_SUMMARY"
+          echo "Cloudflare account access and required Manager settings checked."
+          echo "### Manager settings and account access checked. Run the read-only inventory to verify staging resources." >> "$GITHUB_STEP_SUMMARY"

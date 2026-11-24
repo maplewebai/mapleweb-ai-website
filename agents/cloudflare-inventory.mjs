@@ -3,9 +3,12 @@
 import {appendFileSync} from 'node:fs';
 
 const ROOT = 'https://api.cloudflare.com/client/v4';
-const EXPECTED_DB = 'mapleweb-manager-staging-db';
-const TARGET_WORKER = 'mapleweb-manager-v2-staging';
+const STAGING_SERVICES = [
+  {key:'manager', label:'Website Manager', database:'mapleweb-manager-staging-db', worker:'mapleweb-manager-v2-staging'},
+  {key:'calling', label:'Calling Sales', database:'mapleweb-calling-sales-staging-db', worker:'mapleweb-calling-sales-staging'},
+];
 const ACCOUNT_ID = /^[a-f0-9]{32}$/i;
+const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACCOUNTS_PER_PAGE = 50;
 
 function ensure(condition, message) { if (!condition) throw Error(message); }
@@ -52,27 +55,59 @@ async function verifyAccount(token, expectedAccountId, fetchFn) {
   return info.result.id;
 }
 
-export async function inventory({token,expectedAccountId='',fetchFn=fetch,onAccountVerified}) {
-  const accountId=await verifyAccount(token,expectedAccountId,fetchFn);
-  onAccountVerified?.();
-
-  const sub=await api(token,'/accounts/'+accountId+'/workers/subdomain','the Workers.dev subdomain',fetchFn);
+async function verifySubdomain(token, accountPath, fetchFn, report) {
+  const sub=await api(token,accountPath+'/workers/subdomain','the Workers.dev subdomain',fetchFn);
   const subdomain=sub.result?.subdomain;
   ensure(typeof subdomain==='string' && /^[a-z0-9-]{2,40}$/i.test(subdomain),'Workers.dev subdomain missing or invalid');
+  report('Workers.dev subdomain verified.');
+}
 
-  const dbResponse=await api(token,'/accounts/'+accountId+'/d1/database?per_page=100&page=1','the staging D1 database list',fetchFn);
-  const dbs=singlePage(dbResponse,'Staging D1 databases',100).filter(db=>db?.name===EXPECTED_DB);
-  ensure(dbs.length===1,'Exactly one isolated D1 database named '+EXPECTED_DB+' must exist. Found '+dbs.length);
-  const databaseId=dbs[0].uuid;
-  ensure(typeof databaseId==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(databaseId), 'Staging D1 database UUID missing or invalid');
-  const check=await api(token,'/accounts/'+accountId+'/d1/database/'+databaseId,'the staging D1 database',fetchFn);
-  ensure(check.result?.name===EXPECTED_DB && check.result?.uuid===databaseId, 'Staging D1 identity check failed');
+async function verifyDatabase({token, accountPath, service, databaseId, databases, fetchFn, report}) {
+  const label=service.label+' staging D1 database';
+  if (!databaseId) {
+    const matches=(await databases).filter(db=>db?.name===service.database);
+    ensure(matches.length===1,'Exactly one isolated D1 database named '+service.database+' must exist. Found '+matches.length);
+    databaseId=matches[0].uuid;
+  }
+  ensure(typeof databaseId==='string' && DATABASE_ID.test(databaseId), label+' UUID missing or invalid');
+  const check=await api(token,accountPath+'/d1/database/'+databaseId,'the '+label,fetchFn);
+  ensure(check.result?.name===service.database && check.result?.uuid===databaseId, label+' identity check failed');
+  report(label+' verified.');
+}
 
-  const workers=await api(token,'/accounts/'+accountId+'/workers/scripts','the existing Workers list',fetchFn);
-  ensure(Array.isArray(workers.result),'Existing Workers returned an unexpected response');
-  ensure(!workers.result.some(worker=>worker?.id===TARGET_WORKER),'The '+TARGET_WORKER+' Worker already exists; deployment could overwrite it');
+async function verifyWorkerNames(token, accountPath, fetchFn, report) {
+  const workers=await api(token,accountPath+'/workers/scripts','the existing Workers list',fetchFn);
+  ensure(Array.isArray(workers.result) && workers.result.every(worker=>typeof worker?.id==='string'),
+    'Existing Workers returned an unexpected response');
+  const existingNames=new Set(workers.result.map(worker=>worker.id));
+  const collisions=[];
+  for (const {worker} of STAGING_SERVICES) {
+    if (existingNames.has(worker)) collisions.push(worker);
+    else report('Worker name '+worker+' is unused.');
+  }
+  ensure(collisions.length===0,'Staging Worker names already in use: '+collisions.join(', ')+'. Deployment could overwrite them.');
+}
 
-  return {accountId, subdomain:subdomain+'.workers.dev', databaseId, targetCount:1,
+export async function inventory({token,expectedAccountId='',expectedDatabaseIds={},fetchFn=fetch,report=()=>{}}) {
+  const accountId=await verifyAccount(token,expectedAccountId,fetchFn);
+  report('Cloudflare connection passed. Account identity verified via GET.');
+  const accountPath='/accounts/'+accountId;
+  const listNeeded=STAGING_SERVICES.some(({key})=>!expectedDatabaseIds[key]);
+  const databases=listNeeded
+    ? api(token,accountPath+'/d1/database?per_page=100&page=1','the staging D1 database list',fetchFn)
+      .then(response=>singlePage(response,'Staging D1 databases',100))
+    : undefined;
+  const checks=await Promise.allSettled([
+    verifySubdomain(token,accountPath,fetchFn,report),
+    verifyWorkerNames(token,accountPath,fetchFn,report),
+    ...STAGING_SERVICES.map(service=>verifyDatabase({
+      token,accountPath,service,databaseId:expectedDatabaseIds[service.key],databases,fetchFn,report,
+    })),
+  ]);
+  const failures=new Set(checks.filter(check=>check.status==='rejected').map(check=>check.reason.message));
+  ensure(failures.size===0,[...failures].join(' '));
+
+  return {accountId, targetCount:STAGING_SERVICES.length,
     resourceCheck:'READ_ONLY_COMPLETE',noChargeVerified:false,deployAuthorized:false};
 }
 
@@ -87,16 +122,17 @@ if(process.argv[1] && import.meta.url.endsWith('/'+process.argv[1].split('/').po
     try {
       await inventory({
         token,expectedAccountId:process.env.CLOUDFLARE_ACCOUNT_ID||'',
-        onAccountVerified:()=>{
-          console.log('Cloudflare connection passed. Account identity verified via GET.');
-          summary('### Cloudflare connection: PASS\nVerified the account identity via GET.');
+        expectedDatabaseIds:{manager:process.env.MANAGER_D1_ID,calling:process.env.CALLING_D1_ID},
+        report:message=>{
+          console.log(message);
+          summary('- '+message);
         },
       });
-      console.log('Manager staging inventory passed. Verified the Workers.dev subdomain, isolated D1 database and unused Manager Worker name.');
-      summary('### Manager staging inventory: PASS\nVerified the Workers.dev subdomain, isolated D1 database and unused Manager Worker name. **No deployment.**');
+      console.log('Website Manager and Calling Sales staging inventory passed.');
+      summary('### Staging inventory: PASS\nWebsite Manager and Calling Sales resources verified. **No deployment.**');
     } catch (e) {
       console.error('BLOCKED: '+e.message);
-      summary('### Manager staging inventory: BLOCKED\n'+e.message+'\n\n**No deployment.**');
+      summary('### Staging inventory: BLOCKED\n'+e.message+'\n\n**No deployment.**');
       process.exitCode=1;
     }
   }

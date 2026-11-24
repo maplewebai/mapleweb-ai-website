@@ -42,6 +42,11 @@ jobs:
           STAGING_ACCOUNT_PRESENT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID != '' }}
           STAGING_D1_PRESENT: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID != '' }}
           STAGING_OWNER_TOKEN_PRESENT: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN != '' }}
+          CALLING_D1_PRESENT: ${{ secrets.MAPLEWEB_STAGING_CALLING_D1_DATABASE_ID != '' }}
+          CALLING_ADMIN_PRESENT: ${{ secrets.MAPLEWEB_STAGING_CALLING_ADMIN_TOKEN != '' }}
+          CALLING_HASH_PRESENT: ${{ secrets.MAPLEWEB_STAGING_CALLING_HASH_SECRET != '' }}
+          FREE_CONFIRMED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED == 'CONFIRMED_FREE_TIER' }}
+          CALLING_APPROVED: ${{ vars.MAPLEWEB_STAGING_CALLING_DEPLOY_APPROVED == 'APPROVED_ISOLATED_STAGING_NO_CALLS' }}
         run: |
           {
             echo '### GitHub Actions settings available to this job'
@@ -52,11 +57,18 @@ jobs:
             echo "- MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID (variable): $STAGING_ACCOUNT_PRESENT"
             echo "- MAPLEWEB_STAGING_D1_DATABASE_ID: $STAGING_D1_PRESENT"
             echo "- MAPLEWEB_STAGING_OWNER_TOKEN: $STAGING_OWNER_TOKEN_PRESENT"
+            echo "- MAPLEWEB_STAGING_CALLING_D1_DATABASE_ID: $CALLING_D1_PRESENT"
+            echo "- MAPLEWEB_STAGING_CALLING_ADMIN_TOKEN: $CALLING_ADMIN_PRESENT"
+            echo "- MAPLEWEB_STAGING_CALLING_HASH_SECRET: $CALLING_HASH_PRESENT"
+            echo "- MAPLEWEB_STAGING_FREE_CONFIRMED (confirmation matches): $FREE_CONFIRMED"
+            echo "- MAPLEWEB_STAGING_CALLING_DEPLOY_APPROVED (approval matches): $CALLING_APPROVED"
           } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Verify Cloudflare account and inspect Manager staging (GET only)
+      - name: Verify Cloudflare account and inspect both staging services (GET only)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLAUDFLAER_API_TOKEN || secrets.CLOUDFLAER_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+          MANAGER_D1_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
+          CALLING_D1_ID: ${{ secrets.MAPLEWEB_STAGING_CALLING_D1_DATABASE_ID }}
         run: |
           node agents/cloudflare-inventory.mjs
       - name: Always document that this workflow does NOT deploy
