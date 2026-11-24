@@ -6,6 +6,9 @@ on:
     branches: [mapleweb-ai-agents]
     paths:
       - 'agents/RUN_STAGING_AUTO_INVENTORY.md'
+      - '.github/workflows/staging-auto-inventory.yml'
+      - 'agents/cloudflare-inventory.mjs'
+      - 'agents/tests/cloudflare-inventory.test.mjs'
 
 permissions:
   contents: read
@@ -22,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: mapleweb-ai-agents
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -30,10 +33,30 @@ jobs:
         run: |
           node --check agents/cloudflare-inventory.mjs
           node --test agents/tests/cloudflare-inventory.test.mjs
-      - name: Discover account, subdomain, staging DB and existing Workers (GET only)
+      - name: Report which Cloudflare settings are available to this job
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLAER_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CANONICAL_TOKEN_PRESENT: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          SCREENSHOT_TOKEN_PRESENT: ${{ secrets.CLAUDFLAER_API_TOKEN != '' }}
+          LEGACY_TOKEN_PRESENT: ${{ secrets.CLOUDFLAER_API_TOKEN != '' }}
+          ACCOUNT_ID_PRESENT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          STAGING_ACCOUNT_PRESENT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID != '' }}
+          STAGING_D1_PRESENT: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID != '' }}
+          STAGING_OWNER_TOKEN_PRESENT: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN != '' }}
+        run: |
+          {
+            echo '### GitHub Actions settings available to this job'
+            echo "- CLOUDFLARE_API_TOKEN: $CANONICAL_TOKEN_PRESENT"
+            echo "- CLAUDFLAER_API_TOKEN: $SCREENSHOT_TOKEN_PRESENT"
+            echo "- CLOUDFLAER_API_TOKEN: $LEGACY_TOKEN_PRESENT"
+            echo "- CLOUDFLARE_ACCOUNT_ID: $ACCOUNT_ID_PRESENT"
+            echo "- MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID (variable): $STAGING_ACCOUNT_PRESENT"
+            echo "- MAPLEWEB_STAGING_D1_DATABASE_ID: $STAGING_D1_PRESENT"
+            echo "- MAPLEWEB_STAGING_OWNER_TOKEN: $STAGING_OWNER_TOKEN_PRESENT"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Verify Cloudflare account and inspect Manager staging (GET only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLAUDFLAER_API_TOKEN || secrets.CLOUDFLAER_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
         run: |
           node agents/cloudflare-inventory.mjs
       - name: Always document that this workflow does NOT deploy
