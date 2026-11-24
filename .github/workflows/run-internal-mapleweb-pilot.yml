@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          project_id="PILOT$GITHUB_RUN_ID"
+          project_id="PILOT$(printf '%X' "$GITHUB_RUN_ID")"
           if ! [[ "$project_id" =~ ^[A-Z0-9_-]{3,30}$ ]]; then echo "::error::Unsafe pilot project ID"; exit 1; fi
           mkdir -p /tmp/mapleweb-pilot
           : > /tmp/mapleweb-pilot/steps.tsv
