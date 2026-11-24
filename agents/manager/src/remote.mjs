@@ -20,11 +20,16 @@ export async function runStagingRole(env,role,action,input={},context={},fetchIm
   if(u.protocol!=='https:' || !u.hostname.endsWith('.workers.dev') ||
     u.pathname!=='/execute'||u.search||u.hash||u.username||u.password)
     throw bad('Only isolated Cloudflare role worker endpoints are allowed',503);
+  // Use Cloudflare's internal service binding when present. Public Workers.dev
+  // URLs cannot be fetched reliably from another Worker on the same zone.
+  const service=env['ROLE_'+role.toUpperCase().replace(/-/g,'_')];
+  const dispatch=service&&typeof service.fetch==='function'
+    ? (url,options)=>service.fetch(new Request(url,options)) : fetchImpl;
   const token=env.ROLE_INTERNAL_TOKEN;
   if(typeof token!=='string'||token.length<32)throw bad('Remote role authentication is not configured',503);
   let res;
   try{
-    res=await fetchImpl(u.href,{method:'POST',headers:{
+    res=await dispatch(u.href,{method:'POST',headers:{
       'authorization':'Bearer '+token,'content-type':'application/json','accept':'application/json'
     },body:JSON.stringify({synthetic:true,action,input,context}),signal:AbortSignal.timeout(7000)});
   }catch{throw bad('Remote role Worker not reachable',502);}
