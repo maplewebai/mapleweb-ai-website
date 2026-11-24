@@ -53,8 +53,8 @@ jobs:
           jq -e --arg id "$CLOUDFLARE_ACCOUNT_ID" '.success == true and .result.id == $id' /tmp/mapleweb-cf-account.json >/dev/null
           curl -fsS --max-time 25 -H "$auth" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$MANAGER_D1_ID" -o /tmp/mapleweb-cf-d1.json
           jq -e --arg id "$MANAGER_D1_ID" '.success == true and .result.uuid == $id and .result.name == "mapleweb-manager-staging-db"' /tmp/mapleweb-cf-d1.json >/dev/null
-          curl -fsS --max-time 25 -H "$auth" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/mapleweb-manager-v2-staging" -o /tmp/mapleweb-cf-manager.json
-          jq -e '.success == true and .result.id == "mapleweb-manager-v2-staging"' /tmp/mapleweb-cf-manager.json >/dev/null
+          manager_http=$(curl -sS --max-time 25 -H "$auth" -o /tmp/mapleweb-cf-manager-script -w '%{http_code}' "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/mapleweb-manager-v2-staging")
+          if [ "$manager_http" != "200" ]; then echo "::error::Existing isolated Manager cannot be confirmed (HTTP $manager_http)"; exit 1; fi
           manager="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
           curl -fsS --max-time 20 "$manager/health" -o /tmp/mapleweb-before-health.json
           jq -e '.mode == "staging" and .managerReady == true and .paymentsEnabled == false and .publishingEnabled == false' /tmp/mapleweb-before-health.json >/dev/null
@@ -62,8 +62,8 @@ jobs:
           jq -e '.storageReady == true and .paymentsEnabled == false and .publishEnabled == false and .realCustomerInputAllowed == false and .remoteDispatch.remoteRoles == 8' /tmp/mapleweb-before-status.json >/dev/null
           for role in website-developer customer-care sales research quality-checker support finance publishing; do
             name="mapleweb-role-$role-staging"
-            curl -fsS --max-time 25 -H "$auth" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$name" -o /tmp/mapleweb-role-worker.json
-            jq -e --arg name "$name" '.success == true and .result.id == $name' /tmp/mapleweb-role-worker.json >/dev/null
+            role_http=$(curl -sS --max-time 25 -H "$auth" -o /tmp/mapleweb-role-script -w '%{http_code}' "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$name")
+            if [ "$role_http" != "200" ]; then echo "::error::Isolated role Worker $name cannot be confirmed (HTTP $role_http)"; exit 1; fi
             curl -fsS --max-time 20 "https://$name.reasdfghkj.workers.dev/health" -o /tmp/mapleweb-role-health.json
             jq -e --arg role "$role" '.agent == $role and .mode == "staging" and .healthy == true and .internalAuthReady == true and .paymentsEnabled == false and .publishingEnabled == false and .realCustomersEnabled == false' /tmp/mapleweb-role-health.json >/dev/null
           done
