@@ -1,0 +1,52 @@
+name: Verify eight staging role Workers connected to existing Manager (NO DEPLOY)
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/roles/REQUEST_EIGHT_CONNECTION_VERIFY.md']
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+      CI: 'true'
+    steps:
+      - name: Verify Manager remote role configuration and eight real live health endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$MANAGER_OWNER_TOKEN" ]; then echo "::error::Owner token missing"; exit 1; fi
+          base="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            curl -fsS --max-time 20 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$base/api/status" \
+              -o /tmp/mapleweb-status.json
+            echo "Attempt $attempt, Manager configuration:"
+            jq -c '{mode,storageReady,paymentsEnabled,publishEnabled,realCustomerInputAllowed,remoteDispatch}' /tmp/mapleweb-status.json
+            if jq -e '.mode == "staging" and .storageReady == true and .paymentsEnabled == false and .publishEnabled == false and .realCustomerInputAllowed == false and .remoteDispatch.enabled == true and .remoteDispatch.remoteRoles == 8' /tmp/mapleweb-status.json >/dev/null; then break; fi
+            sleep 3
+          done
+          jq -e '.remoteDispatch.enabled == true and .remoteDispatch.remoteRoles == 8' /tmp/mapleweb-status.json >/dev/null
+          curl -fsS --max-time 50 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" \
+            "$base/api/integrations/agents-health" -o /tmp/mapleweb-roles-health.json
+          jq -c '{liveRolesVerified,totalRoles,results}' /tmp/mapleweb-roles-health.json
+          jq -e '.liveRolesVerified == 8 and .totalRoles == 8 and ([.results[].verified] | all)' /tmp/mapleweb-roles-health.json >/dev/null
+      - name: Run one safe synthetic Sales quote through the Manager-to-Agent bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          code=$(curl -sS --max-time 25 -o /tmp/mapleweb-sales.json -w '%{http_code}' \
+            -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" -H 'Content-Type: application/json' \
+            -X POST "$base/api/jobs" --data '{"synthetic":true,"projectId":"EIGHTROLESSTAGING","role":"sales","action":"quote","input":{"tier":1}}')
+          echo "Synthetic Sales request HTTP status: $code"
+          jq -c '{result:(.result | if type == "object" then {agent,status,priceRangeCAD,paymentCharged} else . end),error}' /tmp/mapleweb-sales.json
+          test "$code" = '201'
+          jq -e '.result.agent == "sales" and .result.status == "OWNER_REVIEW_REQUIRED" and .result.paymentCharged == false' /tmp/mapleweb-sales.json >/dev/null
+          echo "PASS: Eight roles healthy and connected; synthetic Sales execution through Manager works." >> "$GITHUB_STEP_SUMMARY"
+      - name: Record nonproduction scope
+        if: always()
+        run: echo "No Cloudflare deployment or config change, no payment, real customer data, calls or public site changes." >> "$GITHUB_STEP_SUMMARY"
