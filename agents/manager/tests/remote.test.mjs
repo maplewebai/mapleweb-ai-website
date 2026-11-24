@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runStagingRole,remoteRoleState} from '../src/remote.mjs';
+import {checkRoleHealth} from '../src/cloudflare.mjs';
 const T='role-internal-testing-secret-that-is-not-live';
 const api='https://mapleweb-agent-sales-staging.example.workers.dev/execute';
 const env={ROLE_INTERNAL_TOKEN:T,AGENT_EXECUTION_URLS:JSON.stringify({sales:api})};
@@ -59,4 +60,28 @@ test('invalid remote map fails safely',async()=>{
   assert.throws(()=>remoteRoleState({AGENT_EXECUTION_URLS:'[not-json'}),/Invalid role execution/);
   await assert.rejects(runStagingRole({...env,AGENT_EXECUTION_URLS:'[]notjson'},
     'sales','quote',{tier:1}),/Invalid role execution/);
+});
+
+test('Manager role execution uses service binding over public Workers.dev fetch',async()=>{
+  const live={...env,ROLE_SALES:{async fetch(request){
+    assert.equal(new URL(request.url).pathname,'/execute');
+    assert.equal(request.headers.get('authorization'),'Bearer '+T);
+    return new Response(JSON.stringify({agent:'sales',executed:true,
+      result:{agent:'sales',status:'OWNER_REVIEW_REQUIRED',paymentCharged:false}}),{status:200});
+  }}};
+  const result=await runStagingRole(live,'sales','quote',{tier:1},{},async()=>{
+    throw Error('Public fetch must not be used');
+  });
+  assert.equal(result.agent,'sales');
+});
+test('Manager role health uses service binding with exact role identity',async()=>{
+  const env={AGENT_HEALTH_URLS:JSON.stringify({sales:'https://mapleweb-role-sales-staging.example.workers.dev/health'}),
+    ROLE_SALES:{async fetch(request){
+      assert.equal(new URL(request.url).pathname,'/health');
+      return new Response(JSON.stringify({agent:'sales',mode:'staging',healthy:true}),{status:200});
+    }}};
+  const result=await checkRoleHealth(env);
+  assert.equal(result.totalRoles,8);
+  assert.equal(result.liveRolesVerified,1);
+  assert.equal(result.results.find(r=>r.agent==='sales').verified,true);
 });
