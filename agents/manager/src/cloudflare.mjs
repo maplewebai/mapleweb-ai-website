@@ -27,7 +27,11 @@ export async function checkRoleHealth(env){
       results.push({agent,verified:false,reason:'Health URL must be a configured HTTPS Workers health endpoint'});continue;
     }
     try{
-      const reply=await fetch(u.href,{method:'GET',headers:{accept:'application/json'},signal:AbortSignal.timeout(4000)});
+      const service=env['ROLE_'+agent.toUpperCase().replace(/-/g,'_')];
+      const options={method:'GET',headers:{accept:'application/json'},signal:AbortSignal.timeout(4000)};
+      const reply=service&&typeof service.fetch==='function'
+        ? await service.fetch(new Request(u.href,options))
+        : await fetch(u.href,options);
       const j=reply.ok?await reply.json().catch(()=>({})):{};
       results.push({agent,verified:reply.ok&&j.agent===agent&&j.healthy===true&&j.mode==='staging',
         httpStatus:reply.status});
