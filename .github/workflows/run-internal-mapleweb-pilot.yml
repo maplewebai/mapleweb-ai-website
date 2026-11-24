@@ -1,0 +1,98 @@
+name: Assign and verify all eight agents on a new internal MapleWeb project
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/manager/REQUEST_INTERNAL_PILOT_PROJECT.md']
+permissions:
+  contents: read
+concurrency:
+  group: mapleweb-internal-staging-pilot
+  cancel-in-progress: false
+jobs:
+  pilot:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+      MANAGER_URL: https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev
+    steps:
+      - name: Verify Manager, disabled business operations and eight live role Workers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$MANAGER_OWNER_TOKEN" ]; then echo "::error::Owner authorization missing"; exit 1; fi
+          curl -fsS --max-time 20 "$MANAGER_URL/health" -o /tmp/pilot-manager-health.json
+          jq -e '.mode=="staging" and .managerReady==true and .paymentsEnabled==false and .publishingEnabled==false' /tmp/pilot-manager-health.json >/dev/null
+          curl -fsS --max-time 25 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$MANAGER_URL/api/status" -o /tmp/pilot-manager-status.json
+          jq -e '.mode=="staging" and .storageReady==true and .remoteDispatch.enabled==true and .remoteDispatch.remoteRoles==8 and .paymentsEnabled==false and .publishEnabled==false and .realCustomerInputAllowed==false' /tmp/pilot-manager-status.json >/dev/null
+          curl -fsS --max-time 45 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$MANAGER_URL/api/integrations/agents-health" -o /tmp/pilot-role-health.json
+          jq -e '.totalRoles==8 and .liveRolesVerified==8 and ([.results[].verified]|all)' /tmp/pilot-role-health.json >/dev/null
+      - name: Assign internal pilot tasks to eight roles and verify real saved results
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_id="PILOT$GITHUB_RUN_ID"
+          if ! [[ "$project_id" =~ ^[A-Z0-9_-]{3,30}$ ]]; then echo "::error::Unsafe pilot project ID"; exit 1; fi
+          mkdir -p /tmp/mapleweb-pilot
+          : > /tmp/mapleweb-pilot/steps.tsv
+          assign() {
+            local idx="$1" role="$2" action="$3" expected="$4" input="$5"
+            local payload="/tmp/mapleweb-pilot/$idx-payload.json"
+            local receipt="/tmp/mapleweb-pilot/$idx-receipt.json"
+            local saved="/tmp/mapleweb-pilot/$idx-saved.json"
+            jq -nc --arg pid "$project_id" --arg role "$role" --arg action "$action" --argjson input "$input" \
+              '{synthetic:true,projectId:$pid,role:$role,action:$action,input:$input}' > "$payload"
+            local status
+            status=$(curl -sS --connect-timeout 10 --max-time 30 -o "$receipt" -w '%{http_code}' \
+              -X POST -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" -H 'Content-Type: application/json' \
+              "$MANAGER_URL/api/jobs" --data-binary "@$payload")
+            if [ "$status" != "201" ]; then echo "::error::$role/$action failed HTTP $status"; jq -c '{error}' "$receipt" || true; exit 1; fi
+            jq -e --arg role "$role" --arg expected "$expected" \
+              '.result.agent==$role and .result.status==$expected' "$receipt" >/dev/null
+            local jobid
+            jobid=$(jq -er '.jobId|select(test("^[0-9a-f-]{36}$"))' "$receipt")
+            curl -fsS --max-time 20 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$MANAGER_URL/api/jobs/$jobid" -o "$saved"
+            jq -e --arg pid "$project_id" --arg role "$role" --arg action "$action" --arg expected "$expected" \
+              '.projectId==$pid and .role==$role and .action==$action and .result.agent==$role and .result.status==$expected' "$saved" >/dev/null
+            case "$role/$action" in
+              sales/quote|sales/prepare-order)
+                jq -e '.result.paymentCharged==false and .result.invoiceCreated==false' "$receipt" >/dev/null ;;
+              website-developer/build-draft)
+                jq -e '.result.externallyHosted==false and (.result.html|contains("STAGING TEST"))' "$receipt" >/dev/null ;;
+              quality-checker/review)
+                jq -e '.project.qaPassed==true' "$receipt" >/dev/null ;;
+              publishing/readiness)
+                jq -e '.result.deploymentsPerformed==0 and .result.liveUrl==null' "$receipt" >/dev/null ;;
+            esac
+            printf '%s\t%s\t%s\t%s\n' "$role" "$action" "$expected" "$jobid" >> /tmp/mapleweb-pilot/steps.tsv
+            echo "Verified stored role task: $role/$action ($expected)"
+          }
+          assign 01 customer-care intake DRAFT_ONLY '{}'
+          assign 02 research plan RESEARCH_PLAN_ONLY '{"sector":"fictional local business","area":"fictional Toronto"}'
+          assign 03 sales quote OWNER_REVIEW_REQUIRED '{"tier":2}'
+          assign 04 sales prepare-order DRAFT_ORDER_NOT_SUBMITTED '{"fictional":true,"tier":2,"business":"MapleWeb Pilot Studio","goal":"Create a safe demonstration website to validate the complete agency workflow","features":["Services","Gallery","About"]}'
+          assign 05 website-developer build-draft DRAFT_READY_FOR_QA '{"business":"MapleWeb Pilot Studio","description":"Fictional training studio used to validate website drafting and checking in internal staging."}'
+          assign 06 quality-checker review LOCAL_QA_PASSED '{}'
+          assign 07 support triage DRAFT_ONLY '{"category":"general"}'
+          assign 08 finance status SETUP_NOT_CONNECTED '{}'
+          assign 09 publishing readiness NOT_PUBLISHED '{}'
+          test "$(wc -l < /tmp/mapleweb-pilot/steps.tsv)" -eq 9
+          test "$(cut -f1 /tmp/mapleweb-pilot/steps.tsv | sort -u | wc -l)" -eq 8
+          test "$(cut -f4 /tmp/mapleweb-pilot/steps.tsv | sort -u | wc -l)" -eq 9
+          curl -fsS --max-time 20 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$MANAGER_URL/api/projects/$project_id" -o /tmp/mapleweb-pilot/final-project.json
+          jq -e --arg pid "$project_id" '.project.id==$pid and .project.version==1 and .project.qaPassed==true and .project.publication=="DISABLED" and .project.ownerApprovedVersion==null and .project.customerApprovedVersion==null' /tmp/mapleweb-pilot/final-project.json >/dev/null
+          {
+            echo "## Confirmed internal MapleWeb pilot project"
+            echo "Project ID: $project_id"
+            echo "Eight real staging role endpoints, nine owner-authenticated jobs, nine persisted records and saved QA: all VERIFIED."
+            echo "No real customers, phone calls, payments, customer website publication, approvals, or paid AI."
+            echo
+            echo "| Agent | Work | Verified outcome |"
+            echo "|---|---|---|"
+            while IFS=$'\t' read -r role action outcome jobid; do echo "| $role | $action | $outcome |"; done < /tmp/mapleweb-pilot/steps.tsv
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Record scope even if an agent fails
+        if: always()
+        run: echo "Do not claim success unless all live role, job persistence, and QA checks pass. No public-site changes or paid activity." >> "$GITHUB_STEP_SUMMARY"
