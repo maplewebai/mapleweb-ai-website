@@ -32,7 +32,7 @@ jobs:
           node --test agents/tests/cloudflare-inventory.test.mjs
       - name: Discover account, subdomain, staging DB and existing Workers (GET only)
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLAER_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           node agents/cloudflare-inventory.mjs
