@@ -1,5 +1,6 @@
 // MapleWeb AI rebuilt Manager. Isolated staging; no production publication or payments.
 import {ROLES,PRICES_CAD} from './roles.mjs';
+import {runStagingAutomation} from './staging-automation.mjs';
 import {runStagingRole,remoteRoleState} from './remote.mjs';
 import {bad,readJson,requireOwner,validateSynthetic,idIsSafe} from './security.mjs';
 import {project,saveProject,saveJob,fetchJob,listJobs,audit,requireDb} from './store.mjs';
@@ -323,9 +324,24 @@ export async function handle(request,env,callingFetchImpl=fetch){
   }
   return methodError();
 }
-export default {async fetch(request,env){
-  try{return await handle(request,env||{});}catch(e){
-    const status=Number.isInteger(e?.status)&&e.status>=400&&e.status<=599?e.status:500;
-    return json({error:status===500?'Internal error':String(e.message).slice(0,220)},status);
+export default {
+  async fetch(request,env){
+    try{return await handle(request,env||{});}catch(e){
+      const status=Number.isInteger(e?.status)&&e.status>=400&&e.status<=599?e.status:500;
+      return json({error:status===500?'Internal error':String(e.message).slice(0,220)},status);
+    }
+  },
+  async scheduled(event,env,ctx){
+    // Only Cloudflare's preapproved daily cron can invoke this handler.
+    // All actions remain synthetic and pass through Manager security checks.
+    const work=runStagingAutomation(env,{
+      scheduledTime:event.scheduledTime,
+      handleJob:handle,
+      report:r=>console.log('Staging automation:',r.role,r.action,r.status)
+    }).then(summary=>{
+      console.log('Staging automation complete:',summary.projectId,
+        summary.rolesCompleted,'roles,',summary.stepsCompleted,'safe steps');
+    });
+    ctx.waitUntil(work);
   }
-}};
+};
