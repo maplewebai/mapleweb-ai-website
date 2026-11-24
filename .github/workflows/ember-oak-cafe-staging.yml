@@ -1,0 +1,76 @@
+name: Ember and Oak Cafe - assign eight staging agent tasks
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/manager/REQUEST_EMBER_OAK_CAFE.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  project:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MANAGER_URL: https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev
+      OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+      PROJECT_ID: EMBEROAK26
+    steps:
+      - name: Verify Manager and all eight role services
+        run: |
+          set -euo pipefail
+          test -n "$OWNER_TOKEN"
+          curl -fsS "$MANAGER_URL/health" -o /tmp/eo-health.json
+          jq -e '.mode=="staging" and .managerReady==true and .paymentsEnabled==false and .publishingEnabled==false' /tmp/eo-health.json >/dev/null
+          curl -fsS -H "Authorization: Bearer $OWNER_TOKEN" "$MANAGER_URL/api/status" -o /tmp/eo-status.json
+          jq -e '.storageReady==true and .remoteDispatch.remoteRoles==8 and .realCustomerInputAllowed==false and .paymentsEnabled==false and .publishEnabled==false' /tmp/eo-status.json >/dev/null
+          curl -fsS -H "Authorization: Bearer $OWNER_TOKEN" "$MANAGER_URL/api/integrations/agents-health" -o /tmp/eo-agents.json
+          jq -e '.liveRolesVerified==8 and .totalRoles==8 and ([.results[].verified]|all)' /tmp/eo-agents.json >/dev/null
+      - name: Dispatch all eight agents and check saved results and basic site QA
+        run: |
+          set -euo pipefail
+          mkdir -p project-results
+          : > /tmp/eo-jobs.tsv
+          dispatch() {
+            local idx="$1" role="$2" action="$3" expected="$4" input="$5"
+            jq -nc --arg pid "$PROJECT_ID" --arg role "$role" --arg action "$action" --argjson input "$input" '{synthetic:true,projectId:$pid,role:$role,action:$action,input:$input}' > /tmp/eo-payload.json
+            code=$(curl -sS --max-time 30 -o "project-results/$idx.json" -w '%{http_code}' -X POST -H "Authorization: Bearer $OWNER_TOKEN" -H 'Content-Type: application/json' "$MANAGER_URL/api/jobs" --data-binary @/tmp/eo-payload.json)
+            if [ "$code" != 201 ]; then echo "::error::$role/$action HTTP $code"; cat "project-results/$idx.json"; exit 1; fi
+            jq -e --arg role "$role" --arg expected "$expected" '.result.agent==$role and .result.status==$expected' "project-results/$idx.json" >/dev/null
+            job=$(jq -er '.jobId' "project-results/$idx.json")
+            curl -fsS --max-time 15 -H "Authorization: Bearer $OWNER_TOKEN" "$MANAGER_URL/api/jobs/$job" -o "project-results/$idx-stored.json"
+            jq -e --arg role "$role" --arg action "$action" --arg expected "$expected" --arg pid "$PROJECT_ID" '.projectId==$pid and .role==$role and .action==$action and .result.agent==$role and .result.status==$expected' "project-results/$idx-stored.json" >/dev/null
+            printf '%s\t%s\t%s\n' "$role" "$action" "$expected" >> /tmp/eo-jobs.tsv
+          }
+          dispatch 01 customer-care intake DRAFT_ONLY '{}'
+          dispatch 02 research plan RESEARCH_PLAN_ONLY '{"sector":"fictional specialty cafe","area":"Toronto demo"}'
+          dispatch 03 sales quote OWNER_REVIEW_REQUIRED '{"tier":2}'
+          dispatch 04 sales prepare-order DRAFT_ORDER_NOT_SUBMITTED '{"fictional":true,"tier":2,"business":"Ember and Oak Cafe","goal":"Build an elegant one page demo cafe website with hero, menu, hours, about, sample reviews and contact","features":["Hero","Menu","About","Demo reviews","Hours","Contact"]}'
+          dispatch 05 website-developer build-draft DRAFT_READY_FOR_QA '{"business":"Ember and Oak Cafe","description":"A fictional Toronto specialty coffee shop serving espresso drinks and pastries in a warm calm setting. Staging only."}'
+          dispatch 06 quality-checker review LOCAL_QA_PASSED '{}'
+          dispatch 07 support triage DRAFT_ONLY '{"category":"general"}'
+          dispatch 08 finance status SETUP_NOT_CONNECTED '{}'
+          dispatch 09 publishing readiness NOT_PUBLISHED '{}'
+          test "$(wc -l < /tmp/eo-jobs.tsv)" -eq 9
+          test "$(cut -f1 /tmp/eo-jobs.tsv | sort -u | wc -l)" -eq 8
+          jq -er '.result.html' project-results/05.json > project-results/manager-generated-draft.html
+          grep -q 'STAGING TEST' project-results/manager-generated-draft.html
+          jq -e '.project.qaPassed==true' project-results/06.json >/dev/null
+          jq -e '.result.deploymentsPerformed==0 and .result.liveUrl==null' project-results/09.json >/dev/null
+          curl -fsS -H "Authorization: Bearer $OWNER_TOKEN" "$MANAGER_URL/api/projects/$PROJECT_ID" -o project-results/project-final.json
+          jq -e '.project.id=="EMBEROAK26" and .project.qaPassed==true and .project.publication=="DISABLED"' project-results/project-final.json >/dev/null
+          {
+            echo "## Ember and Oak Cafe — completed Manager assignments"
+            echo "Staging project EMBEROAK26. Eight agents; nine saved tasks; Manager-built draft; local HTML QA passed."
+            echo "Fictional project only. No real contact, paid media, or publishing."
+            echo '| Agent | Task | Status |'
+            echo '|---|---|---|'
+            while IFS=$'\t' read -r role task status; do echo "| $role | $task | $status |"; done < /tmp/eo-jobs.tsv
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Attach private Manager-generated website draft and job results
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-oak-manager-draft-and-tasks
+          path: project-results
+          retention-days: 14
