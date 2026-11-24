@@ -1,0 +1,190 @@
+name: Activate eight isolated MapleWeb role Workers in FREE staging (no customer activity)
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - 'agents/roles/REQUEST_EIGHT_STAGING_DEPLOY.md'
+permissions:
+  contents: read
+concurrency:
+  group: mapleweb-eight-isolated-role-staging
+  cancel-in-progress: false
+jobs:
+  activate:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }
+      EXPECTED_ACCOUNT_ID: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }
+      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }
+      FREE_TIER_VERIFIED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test all eight role functions and Manager code offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd agents/roles && npm test && npm run check)
+          (cd agents/manager && npm test && npm run check)
+      - name: Verify no-charge consent, exact Cloudflare account, current Manager, and unused staging names
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID EXPECTED_ACCOUNT_ID MANAGER_OWNER_TOKEN; do
+            if [ -z "$(printenv "$key")" ]; then echo "::error::Missing $key"; exit 1; fi
+          done
+          if [ "$FREE_TIER_VERIFIED" != 'CONFIRMED_FREE_TIER' ]; then
+            echo "::error::No-charge staging not confirmed"; exit 1
+          fi
+          if ! [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[a-fA-F0-9]{32}$ ]] || [ "$CLOUDFLARE_ACCOUNT_ID" != "$EXPECTED_ACCOUNT_ID" ]; then
+            echo "::error::Cloudflare account mismatch"; exit 1
+          fi
+          if [ "$(printf %s "$MANAGER_OWNER_TOKEN" | wc -c)" -lt 32 ]; then
+            echo "::error::Manager owner authorization not ready"; exit 1
+          fi
+          auth_header="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          curl -fsS --connect-timeout 10 --max-time 25 -H "$auth_header" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID" \
+            -o /tmp/mapleweb-eight-account.json
+          jq -e --arg id "$CLOUDFLARE_ACCOUNT_ID" '.success == true and .result.id == $id' /tmp/mapleweb-eight-account.json >/dev/null
+          curl -fsS --connect-timeout 10 --max-time 25 -H "$auth_header" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            -o /tmp/mapleweb-eight-subdomain.json
+          subdomain=$(jq -er 'select(.success == true) | .result.subdomain' /tmp/mapleweb-eight-subdomain.json)
+          if ! [[ "$subdomain" =~ ^[a-z0-9-]+$ ]]; then echo "::error::Invalid subdomain"; exit 1; fi
+          echo "WORKERS_SUBDOMAIN=$subdomain" >> "$GITHUB_ENV"
+          manager="https://mapleweb-manager-v2-staging.$subdomain.workers.dev"
+          curl -fsS --max-time 20 "$manager/health" -o /tmp/mapleweb-eight-manager.json
+          jq -e '.mode == "staging" and .managerReady == true and .paymentsEnabled == false and .publishingEnabled == false' /tmp/mapleweb-eight-manager.json >/dev/null
+          curl -fsS --max-time 20 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$manager/api/status" -o /tmp/mapleweb-eight-manager-status.json
+          jq -e '.mode == "staging" and .storageReady == true and .paymentsEnabled == false and .publishEnabled == false and .realCustomerInputAllowed == false' /tmp/mapleweb-eight-manager-status.json >/dev/null
+          for role in website-developer customer-care sales research quality-checker support finance publishing; do
+            name="mapleweb-role-$role-staging"
+            code=$(curl -sS --max-time 25 -o /tmp/mapleweb-role-check.json -w '%{http_code}' \
+              -H "$auth_header" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$name")
+            if [ "$code" != "404" ]; then
+              echo "::error::Worker name $name exists or is not safely verifiable (HTTP $code); refusing overwrite."
+              exit 1
+            fi
+          done
+          echo "All eight isolated names unused; existing Manager responsive; exact account and owner confirmed."
+      - name: Generate eight isolated Workers.dev-only configurations and dry-run bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd agents/roles
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {ROLES} from '../manager/src/roles.mjs';
+          if(ROLES.length!==8)throw Error('Expected exactly eight roles');
+          for(const role of ROLES){
+            if(!/^[a-z-]+$/.test(role))throw Error('Invalid role');
+            fs.writeFileSync('.workflow-'+role+'.jsonc', JSON.stringify({
+              name:'mapleweb-role-'+role+'-staging',
+              main:'./src/worker.mjs',
+              compatibility_date:'2026-11-01',
+              workers_dev:true,
+              vars:{ROLE_NAME:role}
+            },null,2));
+          }
+          NODE
+          for role in website-developer customer-care sales research quality-checker support finance publishing; do
+            npx --yes wrangler@4 deploy --dry-run --config ".workflow-$role.jsonc" --outdir "/tmp/mapleweb-role-build-$role"
+          done
+      - name: Deploy eight new Workers with isolated encrypted authentication, no routes or paid integrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl rand -hex 32 > /tmp/mapleweb-role-token
+          cd agents/roles
+          for role in website-developer customer-care sales research quality-checker support finance publishing; do
+            name="mapleweb-role-$role-staging"
+            npx --yes wrangler@4 deploy --config ".workflow-$role.jsonc"
+            tr -d '\n' < /tmp/mapleweb-role-token | npx --yes wrangler@4 secret put ROLE_INTERNAL_TOKEN --name "$name"
+          done
+      - name: Verify all eight public health and owner-authorized synthetic execution endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$WORKERS_SUBDOMAIN.workers.dev"
+          for role in website-developer customer-care sales research quality-checker support finance publishing; do
+            endpoint="https://mapleweb-role-$role-staging.$base"
+            healthy=0
+            for attempt in 1 2 3 4 5; do
+              if curl -fsS --max-time 15 "$endpoint/health" -o /tmp/mapleweb-role-health.json && \
+                 jq -e --arg role "$role" '.agent == $role and .healthy == true and .mode == "staging" and .internalAuthReady == true and .paymentsEnabled == false and .publishingEnabled == false and .realCustomersEnabled == false' /tmp/mapleweb-role-health.json >/dev/null; then healthy=1; break; fi
+              sleep 2
+            done
+            if [ "$healthy" != 1 ]; then echo "::error::Role health failed: $role"; exit 1; fi
+            case "$role" in
+              website-developer) payload='{"synthetic":true,"action":"build-draft","input":{"business":"Fictional Bakery","description":"Staging sample only"}}' ;;
+              customer-care) payload='{"synthetic":true,"action":"intake"}' ;;
+              sales) payload='{"synthetic":true,"action":"quote","input":{"tier":1}}' ;;
+              research) payload='{"synthetic":true,"action":"plan"}' ;;
+              quality-checker) payload='{"synthetic":true,"action":"review","input":{"html":"STAGING TEST"}}' ;;
+              support) payload='{"synthetic":true,"action":"triage"}' ;;
+              finance) payload='{"synthetic":true,"action":"status"}' ;;
+              publishing) payload='{"synthetic":true,"action":"readiness"}' ;;
+            esac
+            curl -fsS --max-time 15 -X POST "$endpoint/execute" \
+              -H "Authorization: Bearer $(cat /tmp/mapleweb-role-token)" \
+              -H 'Content-Type: application/json' --data "$payload" \
+              -o /tmp/mapleweb-role-execution.json
+            jq -e --arg role "$role" '.agent == $role and .executed == true and .result.agent == $role' /tmp/mapleweb-role-execution.json >/dev/null
+            if [ "$role" = "publishing" ]; then
+              jq -e '.result.status == "NOT_PUBLISHED" and .result.deploymentsPerformed == 0' /tmp/mapleweb-role-execution.json >/dev/null
+            fi
+            echo "Verified role: $role" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Connect existing Manager to eight verified roles through encrypted Worker secrets only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd agents/roles
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {ROLES} from '../manager/src/roles.mjs';
+          const base=process.env.WORKERS_SUBDOMAIN+'.workers.dev';
+          for(const [key,path] of [['health','health'],['execute','execute']]){
+            const obj=Object.fromEntries(ROLES.map(role=>[
+              role,'https://mapleweb-role-'+role+'-staging.'+base+'/'+path
+            ]));
+            fs.writeFileSync('/tmp/mapleweb-role-'+key+'-urls.json',JSON.stringify(obj),{mode:0o600});
+          }
+          NODE
+          tr -d '\n' < /tmp/mapleweb-role-token | npx --yes wrangler@4 secret put ROLE_INTERNAL_TOKEN --name mapleweb-manager-v2-staging
+          cat /tmp/mapleweb-role-health-urls.json | npx --yes wrangler@4 secret put AGENT_HEALTH_URLS --name mapleweb-manager-v2-staging
+          cat /tmp/mapleweb-role-execute-urls.json | npx --yes wrangler@4 secret put AGENT_EXECUTION_URLS --name mapleweb-manager-v2-staging
+      - name: Verify live Manager recognizes all eight role endpoints and performs a synthetic Sales handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://mapleweb-manager-v2-staging.$WORKERS_SUBDOMAIN.workers.dev"
+          curl -fsS --max-time 20 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" \
+            "$base/api/status" -o /tmp/mapleweb-connected-status.json
+          jq -e '.mode == "staging" and .storageReady == true and .paymentsEnabled == false and .publishEnabled == false and .realCustomerInputAllowed == false and .remoteDispatch.enabled == true and .remoteDispatch.remoteRoles == 8' /tmp/mapleweb-connected-status.json >/dev/null
+          curl -fsS --max-time 40 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" \
+            "$base/api/integrations/agents-health" -o /tmp/mapleweb-connected-eight.json
+          jq -e '.liveRolesVerified == 8 and .totalRoles == 8 and ([.results[].verified] | all)' /tmp/mapleweb-connected-eight.json >/dev/null
+          curl -fsS --max-time 25 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" -H 'Content-Type: application/json' \
+            -X POST "$base/api/jobs" --data '{"synthetic":true,"projectId":"EIGHTROLESSTAGING","role":"sales","action":"quote","input":{"tier":1}}' \
+            -o /tmp/mapleweb-connected-sales.json
+          jq -e '.result.agent == "sales" and .result.status == "OWNER_REVIEW_REQUIRED" and .result.paymentCharged == false' /tmp/mapleweb-connected-sales.json >/dev/null
+          echo "PASS: Eight independent staging Workers verified, all eight live and connected to Manager, synthetic Sales job passed." >> "$GITHUB_STEP_SUMMARY"
+      - name: Report scope and protect public assets
+        if: always()
+        run: |
+          echo "Only isolated role workers on workers.dev and existing staging Manager secret bindings are in scope." >> "$GITHUB_STEP_SUMMARY"
+          echo "No main branch, public website routes, customer websites, paid AI, telephony, payments, or publication permitted." >> "$GITHUB_STEP_SUMMARY"
