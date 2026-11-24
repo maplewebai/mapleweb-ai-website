@@ -1,0 +1,138 @@
+name: Repair staging Manager's eight internal Cloudflare service bindings (NO PRODUCTION)
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/manager/REQUEST_SERVICE_BINDINGS_FIX.md']
+permissions:
+  contents: read
+concurrency:
+  group: mapleweb-manager-role-bindings
+  cancel-in-progress: false
+jobs:
+  reconnect:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      EXPECTED_ACCOUNT_ID: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+      MANAGER_D1_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
+      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+      FREE_TIER_VERIFIED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run Manager security tests, role service-binding tests and syntax check
+        working-directory: agents/manager
+        run: |
+          npm test
+          npm run check
+      - name: Verify the exact account, existing staging Manager and D1 and eight healthy role Workers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID EXPECTED_ACCOUNT_ID MANAGER_D1_ID MANAGER_OWNER_TOKEN; do
+            if [ -z "$(printenv "$key")" ]; then echo "::error::Missing $key"; exit 1; fi
+          done
+          if [ "$FREE_TIER_VERIFIED" != "CONFIRMED_FREE_TIER" ]; then echo "::error::Free plan not confirmed"; exit 1; fi
+          if ! [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[a-fA-F0-9]{32}$ ]] || [ "$CLOUDFLARE_ACCOUNT_ID" != "$EXPECTED_ACCOUNT_ID" ]; then
+            echo "::error::Account mismatch"; exit 1
+          fi
+          if ! [[ "$MANAGER_D1_ID" =~ ^[a-fA-F0-9-]{36}$ ]]; then echo "::error::Missing exact D1 ID"; exit 1; fi
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          curl -fsS --max-time 25 -H "$auth" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID" -o /tmp/mapleweb-cf-account.json
+          jq -e --arg id "$CLOUDFLARE_ACCOUNT_ID" '.success == true and .result.id == $id' /tmp/mapleweb-cf-account.json >/dev/null
+          curl -fsS --max-time 25 -H "$auth" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$MANAGER_D1_ID" -o /tmp/mapleweb-cf-d1.json
+          jq -e --arg id "$MANAGER_D1_ID" '.success == true and .result.uuid == $id and .result.name == "mapleweb-manager-staging-db"' /tmp/mapleweb-cf-d1.json >/dev/null
+          curl -fsS --max-time 25 -H "$auth" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/mapleweb-manager-v2-staging" -o /tmp/mapleweb-cf-manager.json
+          jq -e '.success == true and .result.id == "mapleweb-manager-v2-staging"' /tmp/mapleweb-cf-manager.json >/dev/null
+          manager="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          curl -fsS --max-time 20 "$manager/health" -o /tmp/mapleweb-before-health.json
+          jq -e '.mode == "staging" and .managerReady == true and .paymentsEnabled == false and .publishingEnabled == false' /tmp/mapleweb-before-health.json >/dev/null
+          curl -fsS --max-time 20 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$manager/api/status" -o /tmp/mapleweb-before-status.json
+          jq -e '.storageReady == true and .paymentsEnabled == false and .publishEnabled == false and .realCustomerInputAllowed == false and .remoteDispatch.remoteRoles == 8' /tmp/mapleweb-before-status.json >/dev/null
+          for role in website-developer customer-care sales research quality-checker support finance publishing; do
+            name="mapleweb-role-$role-staging"
+            curl -fsS --max-time 25 -H "$auth" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$name" -o /tmp/mapleweb-role-worker.json
+            jq -e --arg name "$name" '.success == true and .result.id == $name' /tmp/mapleweb-role-worker.json >/dev/null
+            curl -fsS --max-time 20 "https://$name.reasdfghkj.workers.dev/health" -o /tmp/mapleweb-role-health.json
+            jq -e --arg role "$role" '.agent == $role and .mode == "staging" and .healthy == true and .internalAuthReady == true and .paymentsEnabled == false and .publishingEnabled == false and .realCustomersEnabled == false' /tmp/mapleweb-role-health.json >/dev/null
+          done
+      - name: Build existing staging Manager with internal service bindings and unchanged database
+        working-directory: agents/manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import {ROLES} from './src/roles.mjs';
+          assert.equal(ROLES.length,8);
+          const cfg={
+            name:'mapleweb-manager-v2-staging',
+            main:'./src/worker.mjs',
+            compatibility_date:'2026-11-01',
+            workers_dev:true,
+            keep_vars:true,
+            vars:{MODE:'staging',BUSINESS_CASES_ENABLED:'true'},
+            d1_databases:[{
+              binding:'DB',
+              database_name:'mapleweb-manager-staging-db',
+              database_id:process.env.MANAGER_D1_ID
+            }],
+            services:ROLES.map(role=>({
+              binding:'ROLE_'+role.toUpperCase().replace(/-/g,'_'),
+              service:'mapleweb-role-'+role+'-staging'
+            })),
+            secrets:{required:['MANAGER_OWNER_TOKEN','ROLE_INTERNAL_TOKEN','AGENT_HEALTH_URLS','AGENT_EXECUTION_URLS']}
+          };
+          assert.ok(!cfg.routes && !cfg.route && !cfg.triggers);
+          fs.writeFileSync('.workflow-manager-internal-roles.jsonc',JSON.stringify(cfg,null,2));
+          NODE
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --config .workflow-manager-internal-roles.jsonc
+      - name: Deploy only the existing staging Manager (preserve encrypted secrets; no public routes)
+        working-directory: agents/manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config .workflow-manager-internal-roles.jsonc
+      - name: Verify eight live role service bindings and one safe synthetic Sales Manager job
+        shell: bash
+        run: |
+          set -euo pipefail
+          manager="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          ok=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS --max-time 30 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$manager/api/integrations/agents-health" -o /tmp/mapleweb-after-roles.json && \
+               jq -e '.liveRolesVerified == 8 and .totalRoles == 8 and ([.results[].verified] | all)' /tmp/mapleweb-after-roles.json >/dev/null; then
+              ok=1; break
+            fi
+            sleep 3
+          done
+          if [ "$ok" != 1 ]; then
+            jq -c '{liveRolesVerified,totalRoles,results}' /tmp/mapleweb-after-roles.json || true
+            echo "::error::Manager role service bindings are not all healthy"; exit 1
+          fi
+          curl -fsS --max-time 25 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$manager/api/status" -o /tmp/mapleweb-after-status.json
+          jq -e '.mode == "staging" and .storageReady == true and .paymentsEnabled == false and .publishEnabled == false and .realCustomerInputAllowed == false and .remoteDispatch.enabled == true and .remoteDispatch.remoteRoles == 8' /tmp/mapleweb-after-status.json >/dev/null
+          curl -fsS --max-time 25 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" -H 'Content-Type: application/json' -X POST \
+            "$manager/api/jobs" --data '{"synthetic":true,"projectId":"EIGHTROLESSTAGING","role":"sales","action":"quote","input":{"tier":1}}' -o /tmp/mapleweb-after-sales.json
+          if ! jq -e '.result.agent == "sales" and .result.status == "OWNER_REVIEW_REQUIRED" and .result.paymentCharged == false' /tmp/mapleweb-after-sales.json >/dev/null; then
+            jq -c '{error,result:(.result | if type == "object" then {agent,status,paymentCharged} else . end)}' /tmp/mapleweb-after-sales.json
+            echo "::error::Manager Sales-to-Agent live synthetic test failed"; exit 1
+          fi
+          echo "PASS: all eight independent Workers verified through internal Cloudflare service bindings and Manager Sales synthetic task." >> "$GITHUB_STEP_SUMMARY"
+      - name: Report protected staging-only scope
+        if: always()
+        run: |
+          echo "No main edits, public route modifications, real customer inputs, payments, calls, Kimi credits, or customer site publishing." >> "$GITHUB_STEP_SUMMARY"
