@@ -45,6 +45,15 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/automation/status'&&request.method==='GET')
+    return json({mode:'staging',syntheticOnly:true,enabled:env.SYNTHETIC_AUTOMATION_ENABLED==='true',
+      cronUTC:'0 14 * * *',roles:8,customerContactEnabled:false,
+      paidAIEnabled:false,paymentsEnabled:false,realPublishingEnabled:false});
+  if(path==='/api/automation/run'&&request.method==='POST'){
+    const p=validateSynthetic(await readJson(request,600));
+    if(p.action!=='daily-demo')throw bad('Only the safe daily staging demo is available');
+    return json(await runStagingAutomation(env,{scheduledTime:Date.now(),handleJob:handle}),201);
+  }
   if(path==='/api/business/readiness'&&request.method==='GET')
     return json(managerBusinessReadiness(env));
   if(path==='/api/payments/test-status'&&request.method==='GET')
