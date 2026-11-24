@@ -10,3 +10,7 @@ The workflow is expected to stop with a clear missing-secret error unless the ac
 ## Read-only Cloudflare readiness recheck — 2026-11-23
 
 The owner asked to begin Cloudflare staging. Re-run the **read-only** inventory to verify whether private GitHub credentials have been configured; **do not** create D1 databases, deploy Workers, modify public routes or spend money.
+
+## Recheck after confirming saved secret-name typo — 2026-11-23 evening
+
+The existing GitHub secret is displayed as `CLOUDFLAER_API_TOKEN` (misspelled). The read-only inventory workflow now accepts that name as a fallback. Run only read-only discovery and preserve all production services.
