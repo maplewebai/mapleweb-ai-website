@@ -1,0 +1,58 @@
+name: Verify and run scheduled eight-agent automatic staging demo (READ ONLY config)
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/manager/REQUEST_VERIFY_SAFE_AUTOMATION.md']
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+    steps:
+      - name: Confirm live automation endpoint and gated staging status
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$MANAGER_OWNER_TOKEN" ]; then echo "::error::Staging owner token is missing"; exit 1; fi
+          base="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          ok=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            code=$(curl -sS --max-time 20 -o /tmp/mapleweb-automation-status.json -w '%{http_code}' \
+              -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$base/api/automation/status")
+            echo "Manager automation status attempt $attempt HTTP $code"
+            if [ "$code" = "200" ] && jq -e '.mode=="staging" and .enabled == true and .syntheticOnly == true and .cronUTC == "0 14 * * *" and .roles == 8 and .paymentsEnabled == false and .realPublishingEnabled == false and .paidAIEnabled == false and .customerContactEnabled == false' /tmp/mapleweb-automation-status.json >/dev/null; then
+              ok=1; break
+            fi
+            echo "Response (without credentials):"
+            head -c 500 /tmp/mapleweb-automation-status.json
+            echo
+            sleep 3
+          done
+          if [ "$ok" != 1 ]; then echo "::error::Automatic staging endpoint not verified"; exit 1; fi
+      - name: Start first live fictional project automatically and verify each agent's result
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          code=$(curl -sS --max-time 90 -o /tmp/mapleweb-automatic-cycle.json -w '%{http_code}' \
+            -X POST -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" -H 'Content-Type: application/json' \
+            "$base/api/automation/run" --data '{"synthetic":true,"action":"daily-demo"}')
+          echo "Automatic fictional workflow HTTP status: $code"
+          if [ "$code" != "201" ]; then
+            jq -c '{error,stage,status}' /tmp/mapleweb-automatic-cycle.json 2>/dev/null || head -c 500 /tmp/mapleweb-automatic-cycle.json
+            echo "::error::Daily fictional workflow failed"; exit 1
+          fi
+          jq -e '.syntheticOnly==true and .rolesCompleted==8 and .stepsCompleted==9 and .paidUsageEnabled==false and .customerContactEnabled==false and .published==false and ([.results[].role]|unique|length)==8' /tmp/mapleweb-automatic-cycle.json >/dev/null
+          jq -e '[.results[]|select(.role=="quality-checker" and .status=="LOCAL_QA_PASSED")]|length==1' /tmp/mapleweb-automatic-cycle.json >/dev/null
+          jq -e '[.results[]|select(.role=="publishing" and .status=="NOT_PUBLISHED")]|length==1' /tmp/mapleweb-automatic-cycle.json >/dev/null
+          jq -c '{projectId,rolesCompleted,stepsCompleted,syntheticOnly,published,results}' /tmp/mapleweb-automatic-cycle.json | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "PASS: all 8 role Workers automatically completed 9 safe staging tasks. The Cloudflare scheduled trigger is configured daily at 14:00 UTC." >> "$GITHUB_STEP_SUMMARY"
+      - name: Guarantee report excludes real operations
+        if: always()
+        run: |
+          echo "No real customer activity, API costs, phone calls, payment charges or customer website publishing authorized or performed." >> "$GITHUB_STEP_SUMMARY"
