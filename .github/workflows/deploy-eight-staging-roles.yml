@@ -18,15 +18,15 @@ jobs:
     env:
       CI: 'true'
       WRANGLER_SEND_METRICS: 'false'
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }
-      EXPECTED_ACCOUNT_ID: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }
-      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }
-      FREE_TIER_VERIFIED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      EXPECTED_ACCOUNT_ID: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+      FREE_TIER_VERIFIED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
