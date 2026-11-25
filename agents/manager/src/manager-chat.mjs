@@ -3,6 +3,7 @@ import {bad,validateSynthetic} from './security.mjs';
 import {requireDb,listJobs} from './store.mjs';
 import {checkRoleHealth} from './cloudflare.mjs';
 import {requireThread} from './manager-threads.mjs';
+import {githubDevelopmentReport,githubTaskStatus} from './github.mjs';
 
 // Explicit low-cost model selection; no paid-tier or arbitrary model fallback.
 export const MANAGER_FREE_MODELS=Object.freeze(['@cf/meta/llama-3.2-3b-instruct','@cf/meta/llama-3.2-1b-instruct']);
@@ -28,6 +29,8 @@ export function classifyMessage(message) {
   if(/^(?:status|manager status|what is the status|how is the manager doing)$/.test(normalized))return 'status';
   if(/^(?:jobs|recent jobs|show recent jobs|what are the agents doing|show tasks|what have you done)$/.test(normalized))return 'jobs';
   if(/^(?:agents|agent health|check agents|are the agents active|check agent health)$/.test(normalized))return 'agents';
+  if(/^(github status|check github|github agent status|check github agent)$/.test(normalized))return 'github-status';
+  if(/^github task status #?[1-9][0-9]{0,8}$/.test(normalized))return 'github-task-status';
   return 'advice';
 }
 function scopedChat(db,env,threadId,sql){
@@ -60,6 +63,16 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
   }else if(intent==='agents'){
     const result=await health(env);
     reply=result.liveRolesVerified+' of '+result.totalRoles+' role health endpoints verified. Health alone does not prove AI inference or task execution.\n'+result.results.map(x=>x.agent+': '+(x.verified?'health verified':'not verified')).join('\n');
+  }else if(intent==='github-status'||intent==='github-task-status'){
+    try{
+      if(intent==='github-status'){
+        const report=await githubDevelopmentReport(env);
+        reply=report.configured?'GitHub development branch read verified. Latest workflow records (not coding-agent execution):\n'+(report.runs.map(r=>r.name+' — '+r.status+' / '+(r.conclusion||'pending')).join('\n')||'No workflow runs returned.'): 'GitHub Manager credential is not configured. No live GitHub Agent connection verified.';
+      }else{
+        const task=await githubTaskStatus(env,Number(message.match(/[0-9]+/)[0]));
+        reply='GitHub development issue #'+task.number+' — '+task.state+'. Issue state alone does not prove code changes or completed tests.';
+      }
+    }catch{kind='unavailable';reply='GitHub could not be verified. No task execution or status is claimed.';}
   }else{
     kind='unavailable';
     reply='Natural-language AI is not connected yet. I have not assigned or executed your instruction. You can use the agent controls for supported staging jobs, or ask "status", "recent jobs" or "check agents". No website is released without independent final-build QA.';
