@@ -1,3 +1,5 @@
 # Isolated staging update request
 
 Owner requested app deployment and provided included GitHub Actions allowance. Read-only preflight run 45657370591 passed 209 Manager tests, verified existing Cloudflare account, dedicated D1 database, owner authentication and eight staging role health endpoints. Run latest exact-source browser QA first; only update existing staging Manager if checks pass. Preserve current bindings and cron, apply dedicated staging D1 migrations, roll back on failed live acceptance. Enable Workers AI only if free plan is independently confirmed. No plan change, spending, public website, customer publication, calling or payments. Do not treat staging as complete business launch.
+
+Retry after supported Ubuntu 24.04 runner correction and GitHub task browser coverage. Latest Manager tests: 211 passed. Keep all staging safety gates.
