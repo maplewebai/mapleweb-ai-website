@@ -27,7 +27,7 @@ import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness} from './manager-chat.mjs';
 import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
-import {parseCommand,proposeCommand,listCommands,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
+import {parseCommand,proposeCommand,listCommands,readCommand,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -79,6 +79,8 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(threadFile&&request.method==='GET')return json(await readThreadFile(env,threadFile[1],threadFile[2]));
   if(threadFile&&request.method==='DELETE')return json(await deleteThreadFile(env,threadFile[1],threadFile[2]));
   if(path==='/api/manager/commands'&&request.method==='GET')return json(await listCommands(env));
+  const commandRecord=path.match(/^\/api\/manager\/commands\/([0-9a-f-]{36})$/);
+  if(commandRecord&&request.method==='GET')return json(await readCommand(env,commandRecord[1]));
   const commandDecision=path.match(/^\/api\/manager\/commands\/([0-9a-f-]{36})\/decision$/);
   if(commandDecision&&request.method==='POST')return json(await decideCommand(env,commandDecision[1],await readJson(request,300),{dispatch:handle}));
   const roleControl=path.match(/^\/api\/manager\/roles\/([a-z-]+)\/control$/);
