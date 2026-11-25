@@ -110,6 +110,16 @@ async function main(){
  assert.equal(quota.cap,10);assert.equal(quota.remaining,10-quota.used);assert.equal(quota.exhausted,quota.remaining===0);
  const badCommand=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'run manager for I want you to finish and test'},expected:201});
  assert.equal(badCommand.kind,'verified-record');assert.equal(badCommand.jobExecuted,false);assert.match(badCommand.reply,/No task was created/);
+ const natural=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Please create a fictional bakery website and test it'},expected:201});
+ assert.equal(natural.inlineApproval,true);assert.equal(natural.jobExecuted,false);assert.equal(natural.proposal.role,'manager');
+ assert.equal(natural.proposal.state,'AWAITING_APPROVAL');
+ const naturalResult=await req('/api/manager/commands/'+natural.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
+ assert.equal(naturalResult.state,'COMPLETED');assert.match(naturalResult.resultStatus,/8\/8 staging steps confirmed/);assert.equal(naturalResult.websiteReleaseAuthorized,false);
+ const naturalHistory=await req('/api/manager/chat?threadId='+encodeURIComponent(t.id));
+ assert.ok(naturalHistory.turns.some(x=>x.reply.includes('Task reference: '+natural.proposal.id)));
+ const afterNaturalQuota=await req('/api/manager/quota');
+ if(afterNaturalQuota.day===quota.day)assert.equal(afterNaturalQuota.used,quota.used,'Natural task must not spend AI quota');
+ console.log('PASS: ordinary English task request, owner-approved remote execution, saved chat reference and unchanged AI quota');
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
