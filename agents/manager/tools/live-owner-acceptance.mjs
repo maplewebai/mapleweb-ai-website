@@ -3,11 +3,14 @@
 import assert from 'node:assert/strict';
 const base='https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev';
 const token=process.env.MAPLEWEB_STAGING_OWNER_TOKEN;
+const expectedBuild=process.env.MAPLEWEB_EXPECTED_BUILD;
+assert.match(expectedBuild||'',/^[a-f0-9]{40}$/,'Expected exact staging build required');
 assert.ok(token&&token.length>=32,'Provide existing owner token via environment, never command arguments');
 assert.equal(process.env.MAPLEWEB_LIVE_TEST_AUTHORIZED,'true','Explicit isolated live-test permission required');
 const runId='QA'+crypto.randomUUID().replace(/-/g,'').slice(0,20).replace(/[0-9]/g,d=>String.fromCharCode(65+Number(d))).toUpperCase();
 async function req(path,{method='GET',body,auth=true,expected=200}={}){
  const r=await fetch(base+path,{method,redirect:'error',signal:AbortSignal.timeout(45000),headers:{...(auth?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ assert.equal(r.headers.get('X-MapleWeb-Build'),expectedBuild,'Response came from unexpected staging build; stop without retrying mutations');
  const data=await r.json().catch(()=>null);
  if(r.status!==expected){
   const safeErrors=['Task record not found','Task not found','Not found or method not allowed','Verified remote role binding and authentication are required','Owner task controls are not configured','Task already decided; no retry','Task already decided','Role is paused by owner','Task write not confirmed','Task readback not confirmed','Internal error'];
