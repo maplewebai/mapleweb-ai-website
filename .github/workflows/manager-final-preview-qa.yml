@@ -1,0 +1,67 @@
+name: Manager final preview QA — gate delivery until browser pass
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/manager/REQUEST_EXACT_MANAGER_BROWSER_QA.md']
+permissions:
+  contents: read
+concurrency:
+  group: mapleweb-manager-preview-qa
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MANAGER_URL: https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev
+      MANAGER_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+      PROJECT_ID: EMBEROAK26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify Manager, current project, independent role result and exact saved build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$MANAGER_OWNER_TOKEN" ]; then echo "::error::Missing protected Manager auth"; exit 1; fi
+          mkdir -p staging-sites/ember-oak
+          curl -fsS --max-time 20 "$MANAGER_URL/health" -o /tmp/qa-manager-health.json
+          jq -e '.mode=="staging" and .managerReady==true and .paymentsEnabled==false and .publishingEnabled==false' /tmp/qa-manager-health.json >/dev/null
+          auth="Authorization: Bearer $MANAGER_OWNER_TOKEN"
+          curl -fsS --max-time 30 -H "$auth" "$MANAGER_URL/api/integrations/agents-health" -o /tmp/qa-roles.json
+          jq -e '.totalRoles==8 and .liveRolesVerified==8 and ([.results[].verified]|all)' /tmp/qa-roles.json >/dev/null
+          curl -fsS --max-time 20 -H "$auth" "$MANAGER_URL/api/projects/$PROJECT_ID" -o /tmp/qa-project.json
+          jq -e --arg p "$PROJECT_ID" '.project.id==$p and .project.qaPassed==true and .project.revisionOpen==false and .project.publication=="DISABLED"' /tmp/qa-project.json >/dev/null
+          curl -fsS --max-time 20 -H "$auth" "$MANAGER_URL/api/jobs" -o /tmp/qa-jobs.json
+          build_id=$(jq -er --arg p "$PROJECT_ID" '[.jobs[]|select(.project_id==$p and .role=="website-developer" and .action=="build-draft")]|first|.id' /tmp/qa-jobs.json)
+          checker_id=$(jq -er --arg p "$PROJECT_ID" '[.jobs[]|select(.project_id==$p and .role=="quality-checker" and .action=="review")]|first|.id' /tmp/qa-jobs.json)
+          curl -fsS --max-time 20 -H "$auth" "$MANAGER_URL/api/jobs/$build_id" -o /tmp/qa-build.json
+          curl -fsS --max-time 20 -H "$auth" "$MANAGER_URL/api/jobs/$checker_id" -o /tmp/qa-checker.json
+          jq -e --slurpfile p /tmp/qa-project.json '.result.agent=="website-developer" and .result.status=="DRAFT_READY_FOR_QA" and .result.version==$p[0].project.version and (.result.html|type=="string")' /tmp/qa-build.json >/dev/null
+          jq -e '.result.agent=="quality-checker" and .result.status=="LOCAL_QA_PASSED"' /tmp/qa-checker.json >/dev/null
+          jq -er '.result.html' /tmp/qa-build.json > staging-sites/ember-oak/index.html
+          test -s staging-sites/ember-oak/index.html
+          sha256sum staging-sites/ember-oak/index.html > staging-sites/ember-oak/sha256.txt
+          echo "The exact Manager-persisted site passed basic role QA; next gate is independent real browser QA." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser tests
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Independently test actual Manager draft in browser or FAIL CLOSED
+        run: node tools/qa/verify-preview.mjs staging-sites/ember-oak/index.html
+      - name: Release preview artifact ONLY after browser QA passes
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-oak-approved-manager-draft
+          path: staging-sites/ember-oak/
+          retention-days: 7
+      - name: Always disclose remaining mobile device and publication gates
+        if: always()
+        run: |
+          echo "This workflow does not publish websites. Image/browser checks must pass before an owner-preview artifact exists. Samsung content://media remains a separately confirmed device requirement." >> "$GITHUB_STEP_SUMMARY"
