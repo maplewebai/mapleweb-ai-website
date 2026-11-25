@@ -44,9 +44,9 @@ export function requireRemoteRole(env,role){
 }
 export async function listCommands(env){
  const db=enabled(env);
- const tasks=await db.prepare('SELECT id,role,action,project_id,state,job_id,result_status,created_at,updated_at FROM manager_commands ORDER BY created_at DESC LIMIT 30').all();
+ const tasks=await db.prepare('SELECT id,role,action,project_id,input_json,state,job_id,result_status,created_at,updated_at FROM manager_commands ORDER BY created_at DESC LIMIT 30').all();
  const roles=await db.prepare('SELECT role,paused FROM manager_role_controls').all();
- return {tasks:tasks.results||[],roles:[...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
+ return {tasks:(tasks.results||[]).map(({input_json,...task})=>({...task,...(task.role==='github'?{instruction:JSON.parse(input_json).instruction}:{})})),roles:[...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
 }
 export async function proposeCommand(env,command){
  const db=enabled(env);
