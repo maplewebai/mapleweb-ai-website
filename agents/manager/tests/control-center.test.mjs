@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Script} from 'node:vm';
 import worker from '../src/worker.mjs';
 import {controlCenterHtml,serveControlCenter} from '../src/control-center.mjs';
 
@@ -25,7 +24,7 @@ test('private first-party Control Center shell is served only at /control',async
 test('Control Center script compiles; credentials are not embedded in UI and no third-party assets are needed',()=>{
   const scripts=[controlCenterHtml.split('<script>')[1]?.split('</script>')[0]];
   assert.equal(scripts.length,1);
-  assert.doesNotThrow(()=>new Script(scripts[0][1],{filename:'control-center-inline.js'}));
+  assert.doesNotThrow(()=>new Function(scripts[0]),'inline dashboard script must compile');
   for (const role of ['website-developer','quality-checker','customer-care','sales','research','support','finance','publishing'])
     assert.ok(controlCenterHtml.includes(role),'missing role '+role);
   assert.match(controlCenterHtml,/ownerToken=""/);
