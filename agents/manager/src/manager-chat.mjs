@@ -17,7 +17,7 @@ export function managerModelReadiness(env={}){
 // Read-only quota information for the owner and release verification. Count attempts without an arbitrary message cap.
 export async function managerQuota(env){
  const day=new Date().toISOString().slice(0,10),db=requireDb(env);
- const rows=await db.prepare('SELECT used FROM manager_chat_quota WHERE day=?').bind(day).all();
+ const rows=await db.prepare('SELECT used FROM manager_chat_usage WHERE day=?').bind(day).all();
  const used=rows.results?.[0]?.used??0;
  if(!Number.isSafeInteger(used)||used<0)throw bad('Chat allowance cannot be confirmed',503);
  const resetAt=new Date(Date.parse(day+'T00:00:00Z')+86400000).toISOString();
@@ -105,7 +105,7 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
     // hosting-side gate. The provider enforces the free-plan compute allowance; keep attempt accounting.
     if(managerModelReadiness(env).enabled){
       const day=new Date().toISOString().slice(0,10);
-      const reservation=await db.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET used=used+1 ').bind(day).run();
+      const reservation=await db.prepare('INSERT INTO manager_chat_usage(day,used) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET used=used+1 ').bind(day).run();
       if(reservation.meta?.changes===1){
         try{
           // Only the last three advice exchanges are sent, each bounded. Stored
