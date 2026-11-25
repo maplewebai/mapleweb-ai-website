@@ -60,6 +60,11 @@ try{
     await visible('#manager .composer');
     await text('#chatStatus','Private history loaded');
     await text('#threadStatus','Private conversations available');
+    await visible('.managerChatHeader');
+    assert.equal(await page.locator('#taskDesk').isVisible(),false);
+    assert.equal(await page.locator('#banner').isVisible(),false);
+    const initialComposer=await page.locator('#manager .composer').boundingBox();
+    assert.ok(initialComposer&&initialComposer.y+initialComposer.height<=844,'Composer must be in viewport');
     await page.locator('#chatMessage').fill('status');
     await click('#chatSend');
     await text('#chatTurns','authenticated staging Manager is responding');
@@ -79,6 +84,7 @@ try{
     page.once('dialog',d=>d.accept());
     await page.locator('#commandList .statusrow').filter({hasText:'Verify browser test configuration'}).getByRole('button',{name:'Reject',exact:true}).click();
     await text('#commandList','REJECTED');
+    await click('#managerBackChat');
     await page.locator('#chatMessage').fill('run finance for LOCALQA');
     await click('#chatSend');
     await text('#commandList','AWAITING_APPROVAL');
@@ -105,6 +111,7 @@ try{
     await text('#commandList','8/8 staging steps confirmed');
     assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(9, 9, 9)');
 
+    if(width<=900)await click('#managerMenu');
     await click('[data-tab="agents"]');
     await page.locator('#agentGrid .agent').filter({hasText:'Website Developer'}).click();
     await visible('#agentWorkspace');
@@ -150,6 +157,7 @@ try{
     await click('[data-tab="manager"]');
 
     assert.equal(await page.locator('#agents').isVisible(),false);
+    await click('#managerMore');
     await click('.chatHistoryPanel summary');
     await visible('#newThread');
     page.once('dialog',d=>d.accept('Local QA conversation'));
@@ -161,6 +169,7 @@ try{
     await text('#fileList','brief.txt');
     await page.locator('#fileList').getByRole('button',{name:'Read',exact:true}).click();
     await text('#fileContent','Fictional test brief');
+    if(width<=900)await click('#managerMenu');
     await click('[data-tab="business"]');
     await text('#businessStatus','Actual private case records loaded');
     await page.locator('#businessId').fill('LOCALCASE');
@@ -177,7 +186,8 @@ try{
     await click('[data-tab="manager"]');
     const d=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
     assert.ok(d.scroll<=d.width+1,'Layout overflow '+JSON.stringify(d));
-    await click('#logout');
+    await click('#managerMore');
+    await click('#managerSignout');
     await visible('#signin');
     assert.equal(await page.locator('#chatTurns').textContent(),'');
     assert.equal(await page.locator('#agentTurns').textContent(),'');
