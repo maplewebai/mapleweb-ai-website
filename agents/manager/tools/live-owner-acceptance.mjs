@@ -73,6 +73,27 @@ async function main(){
  const managerSaved=await req('/api/manager/commands/'+managerTask.proposal.id);
  assert.equal(managerSaved.task.state,'COMPLETED');assert.equal(managerSaved.task.result_status,managerResult.resultStatus);
  console.log('PASS: Manager coordinated all eight verified remote stages and persisted completion');
+ // Role workspace acceptance: actual authenticated API, private history and remote execution.
+ await req('/api/agents/research/workspace',{auth:false,expected:401});
+ for(const role of roleNames){
+   const ws=await req('/api/agents/'+role+'/workspace');
+   assert.equal(ws.role,role);assert.ok(ws.tasks.every(x=>x.role===role));assert.ok(ws.jobs.every(x=>x.role===role&&!Object.hasOwn(x,'result_json')));
+ }
+ const roleProject=runId+'R';
+ const roleMessage=await req('/api/agents/research/chat',{method:'POST',body:{synthetic:true,message:'show tasks'},expected:201});
+ assert.equal(roleMessage.kind,'verified-record');assert.equal(roleMessage.jobExecuted,false);assert.match(roleMessage.reply,/Verified research records/);
+ const roleTask=await req('/api/agents/research/tasks',{method:'POST',body:{synthetic:true,projectId:roleProject,detail:'fictional bookstore'},expected:201});
+ assert.equal(roleTask.proposal.state,'AWAITING_APPROVAL');
+ const roleSaved=await req('/api/agents/research/workspace');
+ assert.equal(roleSaved.tasks.find(x=>x.id===roleTask.proposal.id)?.detail,'fictional bookstore');
+ const roleResult=await req('/api/manager/commands/'+roleTask.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
+ assert.equal(roleResult.state,'COMPLETED');assert.equal(roleResult.resultStatus,'RESEARCH_PLAN_ONLY');
+ const roleAfter=await req('/api/agents/research/workspace');
+ assert.ok(roleAfter.jobs.some(j=>j.project_id===roleProject&&j.result_status==='RESEARCH_PLAN_ONLY'));
+ assert.ok(roleAfter.turns.some(t=>t.message.includes(roleProject)));
+ const other=await req('/api/agents/finance/workspace');
+ assert.ok(other.turns.every(t=>!t.message.includes(roleProject)));
+ console.log('PASS: per-agent private chat, task isolation, approval and verified remote job results');
  const c=await req('/api/business/cases',{method:'POST',body:{caseId:runId},expected:201});
  const review=await req('/api/business/cases/'+runId+'/events',{method:'POST',body:{expectedRevision:c.case.revision,type:'review-request'}});
  const quote=await req('/api/business/cases/'+runId+'/events',{method:'POST',body:{expectedRevision:review.case.revision,type:'prepare-quote',tier:1,fixedQuoteCAD:650}});
