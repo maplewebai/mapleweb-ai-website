@@ -7,3 +7,7 @@ This workflow must verify the owner-approved Cloudflare account, existing isolat
 Each daily demonstration automatically creates a fictional staging bakery project, gives all eight roles safe role-specific tasks, checks draft website QA, and verifies that sales sends no messages, finance charges nothing, and publishing refuses publication. One immediate owner-authenticated test must pass before reporting automation active.
 
 This is **not** permission to automate real customer operations or incur charges. Those require separate explicit approval and live integration testing.
+
+## 2026-11-25 mandatory QA delivery guard refresh
+
+Owner explicitly reiterated: NEVER show a website to owner or customers before exact-build independent QA and device/hosting verification. Re-run existing safe synthetic staging Manager deployment to activate the new `website-delivery-policy.mjs` fail-closed flags, and verify `/api/status` reports `websiteDelivery.status=BLOCKED_QA`, `ownerPreviewAllowed=false`, `customerPreviewAllowed=false`, `customerPublishingAllowed=false` after deployment. Do not change site publishing routes, headquarters, paid services, contacts, or existing daily automation. Only staging Manager redeploy authorized.
