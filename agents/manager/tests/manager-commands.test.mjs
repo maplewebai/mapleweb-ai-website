@@ -120,3 +120,41 @@ test('exact build identity is attached to health and unauthorized responses',asy
  assert.equal(denied.status,401);
  assert.equal(denied.headers.get('X-MapleWeb-Build'),build);
 });
+
+test('Manager coordinates eight remote steps and records verified progress only',async t=>{
+ const env=setup(t);
+ env.AGENT_EXECUTION_URLS='{}';env.ROLE_INTERNAL_TOKEN='x'.repeat(32);
+ const order=['customer-care','research','sales','website-developer','quality-checker','support','finance','publishing'];
+ const expected=['DRAFT_ONLY','RESEARCH_PLAN_ONLY','OWNER_REVIEW_REQUIRED','DRAFT_READY_FOR_QA','LOCAL_QA_PASSED','DRAFT_ONLY','SETUP_NOT_CONNECTED','NOT_PUBLISHED'];
+ for(const role of order)env['ROLE_'+role.toUpperCase().replace(/-/g,'_')]={fetch(){}};
+ const task=await proposeCommand(env,parseCommand('run manager for CASEABC'));
+ let calls=0;
+ const dispatch=async req=>{
+  const body=await req.json();
+  assert.equal(body.role,order[calls]);
+  const record=(await listCommands(env)).tasks.find(t=>t.id===task.id);
+  assert.equal(record.state,'RUNNING');
+  assert.match(record.result_status,new RegExp('^'+calls+'/8 confirmed'));
+  assert.equal(body.projectId,'CASEABC');
+  const status=expected[calls++];
+  return new Response(JSON.stringify({jobId:'job-'+calls,result:{agent:body.role,status}}),{status:201});
+ };
+ const result=await decideCommand(env,task.id,{decision:'approve'},{dispatch});
+ assert.equal(calls,8);assert.equal(result.state,'COMPLETED');
+ assert.match(result.resultStatus,/8\/8 staging steps confirmed/);
+ assert.equal(result.websiteReleaseAuthorized,false);
+ await assert.rejects(decideCommand(env,task.id,{decision:'approve'},{dispatch}),/already decided/);
+});
+test('Manager stops at failed step without retry and preserves partial progress',async t=>{
+ const env=setup(t);
+ env.AGENT_EXECUTION_URLS='{}';env.ROLE_INTERNAL_TOKEN='x'.repeat(32);
+ for(const role of ['customer-care','research','sales','website-developer','quality-checker','support','finance','publishing'])env['ROLE_'+role.toUpperCase().replace(/-/g,'_')]={fetch(){}};
+ const task=await proposeCommand(env,parseCommand('run manager for FAILCASE'));
+ let calls=0;
+ const result=await decideCommand(env,task.id,{decision:'approve'},{dispatch:async req=>{
+  const body=await req.json();calls++;
+  return calls===1?new Response(JSON.stringify({jobId:'job-first',result:{agent:body.role,status:'DRAFT_ONLY'}}),{status:201}):new Response('{}',{status:502});
+ }});
+ assert.equal(calls,2);assert.equal(result.state,'FAILED_OR_UNCERTAIN');
+ assert.match(result.resultStatus,/1\/8 confirmed; stopped at research/);
+});
