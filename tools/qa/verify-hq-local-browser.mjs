@@ -65,6 +65,8 @@ try{
     await text('#chatTurns','authenticated staging Manager is responding');
     await visible('#chatTurns .userMessage');
     await visible('#chatTurns .assistantBody');
+    await visible('#chatTurns .replyActions button');
+    assert.equal(await page.locator('#chatTurns .pendingMessage').count(),0);
     await text('#chatStatus','Response recorded');
     // GitHub task controls must not claim live execution without credentials.
     await click('[data-chat="github status"]');
@@ -119,6 +121,8 @@ try{
     await text('#agentTurns','Verified website-developer records');
     await visible('#agentTurns .userMessage');
     await visible('#agentTurns .assistantBody');
+    await visible('#agentTurns .replyActions button');
+    assert.equal(await page.locator('#agentTurns .pendingMessage').count(),0);
     await click('[data-agent-pane="agentAssignPane"]');
     await page.locator('#agentProject').fill('AGENTQA');
     await page.locator('#agentDetail').fill('Fictional bookstore with a reading area');
@@ -146,6 +150,8 @@ try{
     await click('[data-tab="manager"]');
 
     assert.equal(await page.locator('#agents').isVisible(),false);
+    await click('.chatHistoryPanel summary');
+    await visible('#newThread');
     page.once('dialog',d=>d.accept('Local QA conversation'));
     await click('#newThread');
     await visible('#threadAttachments');
