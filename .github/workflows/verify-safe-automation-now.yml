@@ -34,6 +34,16 @@ jobs:
             sleep 3
           done
           if [ "$ok" != 1 ]; then echo "::error::Automatic staging endpoint not verified"; exit 1; fi
+      - name: Independently verify LIVE Manager blocks website delivery to owner and customers
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          curl -fsS --max-time 25 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$base/api/status" -o /tmp/mapleweb-policy-status.json
+          jq -e '.mode=="staging" and .publishEnabled==false and .realCustomerInputAllowed==false and .websiteDelivery.status=="BLOCKED_QA" and .websiteDelivery.ownerPreviewAllowed==false and .websiteDelivery.customerPreviewAllowed==false and .websiteDelivery.customerPublishingAllowed==false and .websiteDelivery.deliveryAdapterReady==false and .websiteDelivery.anyRevisionInvalidatesQA==true' /tmp/mapleweb-policy-status.json >/dev/null
+          curl -fsS --max-time 25 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$base/api/projects/EMBEROAK26" -o /tmp/mapleweb-policy-project.json
+          jq -e '.project.publication=="DISABLED" and .project.delivery.status=="BLOCKED_QA" and .project.delivery.ownerPreviewAllowed==false and .project.delivery.customerPreviewAllowed==false and .project.delivery.customerPublishingAllowed==false' /tmp/mapleweb-policy-project.json >/dev/null
+          echo "PASS: live Manager explicitly BLOCKS all owner/customer website releases even when a project has basic staging QA." >> "$GITHUB_STEP_SUMMARY"
       - name: Start first live fictional project automatically and verify each agent's result
         shell: bash
         run: |
