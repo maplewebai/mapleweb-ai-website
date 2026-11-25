@@ -21,3 +21,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Validate and deploy integrated All agents workspaces and ChatGPT-inspired Manager and agent conversations, including mobile and desktop navigation/composer tests. Staging only; keep current approval and rollback safeguards.
 
 - 2026-11-25: Validate and deploy improved Manager and agent chat: immediate pending messages, safe formatted responses, copy controls, auto-sizing composer, expandable history and improved conversation prompts. Preserve shared free-model quota and staging-only approvals. Require browser and live acceptance before retaining deployment.
+
+- 2026-11-25: Validate and deploy dedicated full-screen Manager chat, fixed-in-viewport composer, minimal header, mobile navigation drawer, new chat, and separate task controls. Verify mobile/desktop navigation and existing remote acceptance; retain free-model quota and rollback safeguards.
