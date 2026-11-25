@@ -72,11 +72,19 @@ jobs:
           jq -e '.mode=="staging" and .storageReady and .publishEnabled==false and .paymentsEnabled==false and .realCustomerInputAllowed==false' /tmp/hq-live-before.json >/dev/null
           curl -fsS --max-time 40 -H "$owner" "$base/api/integrations/agents-health" -o /tmp/hq-roles-before.json
           jq -e '.liveRolesVerified==8 and .totalRoles==8' /tmp/hq-roles-before.json >/dev/null
-          # Use only already confirmed free-tier resources. Never subscribe or upgrade.
-          # If the account plan cannot be independently read, deploy with AI disabled.
+          # No plan changes, payment methods, gateways or paid-model fallback.
+          # Prefer independent API plan verification. The owner supplied a current
+          # Workers Free Active dashboard screenshot and authorized this test on
+          # 2026-11-25. That evidence is accepted only today, only for the already
+          # verified staging account, and only if billing-read access is denied.
           ai_enabled=false
-          if curl -fsS --max-time 20 -H "$auth" "$api/subscriptions" -o /tmp/hq-subscriptions.json && jq -e '.success==true and (.result|type=="array") and ([.result[]|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("workers";"i"))]|length>0) and ([.result[]|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("workers";"i"))|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("free";"i")|not)]|length==0)' /tmp/hq-subscriptions.json >/dev/null; then
+          subscription_status=$(curl -sS --max-time 20 -w '%{http_code}' -H "$auth" "$api/subscriptions" -o /tmp/hq-subscriptions.json || true)
+          if [ "$subscription_status" = 200 ] && jq -e '.success==true and (.result|type=="array") and ([.result[]|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("workers";"i"))]|length>0) and ([.result[]|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("workers";"i"))|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("free";"i")|not)]|length==0)' /tmp/hq-subscriptions.json >/dev/null; then
             ai_enabled=true
+            echo "Free plan independently verified through account API."
+          elif [ "$subscription_status" = 403 ] && [ "$(date -u +%F)" = 2026-11-25 ] && [ "$FREE_CONFIRMED" = CONFIRMED_FREE_TIER ]; then
+            ai_enabled=true
+            echo "Billing API access denied; relying on today's owner-confirmed Workers Free dashboard evidence for this account. No billing permissions changed."
           fi
           export HQ_AI_ENABLED="$ai_enabled"
           node --input-type=module <<'NODE'
@@ -109,7 +117,7 @@ jobs:
           const cfg={name:'mapleweb-manager-v2-staging',main:'./src/worker.mjs',
             compatibility_date:live.compatibility_date||'2026-11-01',compatibility_flags:live.compatibility_flags||[],
             workers_dev:true,keep_vars:true,
-            vars:{...currentVars,HQ_BUILD_ID:process.env.GITHUB_SHA,MODE:'staging',BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',MANAGER_CHAT_AI_ENABLED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_FREE_CONFIRMED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_MODEL:'@cf/meta/llama-3.2-3b-instruct'},
+            vars:{...currentVars,HQ_BUILD_ID:process.env.GITHUB_SHA,MODE:'staging',BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',MANAGER_CHAT_AI_ENABLED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_FREE_CONFIRMED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_MODEL:'@cf/google/gemma-4-26b-a4b-it'},
             d1_databases:[{binding:'DB',database_name:'mapleweb-manager-staging-db',database_id:process.env.DB_ID,migrations_dir:'./migrations'}],
             services,secrets:{required:secrets},ai:{binding:'AI'}
           };
