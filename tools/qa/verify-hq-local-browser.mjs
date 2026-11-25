@@ -63,11 +63,22 @@ try{
     await click('#chatSend');
     await text('#chatTurns','authenticated staging Manager is responding');
     await text('#chatStatus','Response recorded');
+    // GitHub task controls must not claim live execution without credentials.
+    await click('[data-chat="github status"]');
+    await text('#chatTurns','GitHub Manager credential is not configured');
+    await text('#chatStatus','Response recorded');
+    await page.locator('#chatMessage').fill('github task: Verify browser test configuration');
+    await click('#chatSend');
+    await text('#commandList','Verify browser test configuration');
+    await text('#commandList','AWAITING_APPROVAL');
+    page.once('dialog',d=>d.accept());
+    await page.locator('#commandList .statusrow').filter({hasText:'Verify browser test configuration'}).getByRole('button',{name:'Reject',exact:true}).click();
+    await text('#commandList','REJECTED');
     await page.locator('#chatMessage').fill('run finance for LOCALQA');
     await click('#chatSend');
     await text('#commandList','AWAITING_APPROVAL');
     page.once('dialog',d=>d.accept());
-    await page.locator('#commandList button').filter({hasText:'Approve'}).click();
+    await page.locator('#commandList .statusrow').filter({hasText:'finance / status'}).getByRole('button',{name:'Approve',exact:true}).click();
     await text('#commandList','COMPLETED');
     await text('#commandList','SETUP_NOT_CONNECTED');
     await page.locator('#roleControls .statusrow').filter({hasText:'finance'}).getByRole('button',{name:'Pause',exact:true}).click();
@@ -88,6 +99,8 @@ try{
     await page.locator('#businessId').fill('LOCALCASE');
     await click('#businessCreate');
     await text('#businessTitle','LOCALCASE');
+    await click('#businessSave');
+    await text('#businessStage','revision 2');
     await click('#businessReview');
     await text('#businessStage','QUOTE_PENDING');
     await page.locator('#bizQuote').fill('650');
