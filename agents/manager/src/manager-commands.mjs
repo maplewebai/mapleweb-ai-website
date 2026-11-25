@@ -51,8 +51,17 @@ export async function listCommands(env){
 export async function proposeCommand(env,command){
  const db=enabled(env);
  const id=crypto.randomUUID(),time=now();
- await db.prepare('INSERT INTO manager_commands(id,role,action,project_id,input_json,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,command.role,command.action,command.projectId,JSON.stringify(command.input),'AWAITING_APPROVAL',time,time).run();
+ const write=await db.prepare('INSERT INTO manager_commands(id,role,action,project_id,input_json,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,command.role,command.action,command.projectId,JSON.stringify(command.input),'AWAITING_APPROVAL',time,time).run();
+ if(write.meta?.changes!==1)throw bad('Task write not confirmed',503);
+ const saved=await db.prepare('SELECT id,state FROM manager_commands WHERE id=?').bind(id).first();
+ if(saved?.id!==id||saved.state!=='AWAITING_APPROVAL')throw bad('Task readback not confirmed',503);
  return {id,role:command.role,action:command.action,projectId:command.projectId,state:'AWAITING_APPROVAL'};
+}
+export async function readCommand(env,id){
+ const db=enabled(env);
+ const task=await db.prepare('SELECT id,role,action,project_id,state,job_id,result_status FROM manager_commands WHERE id=?').bind(id).first();
+ if(!task)throw bad('Task record not found',404);
+ return {task};
 }
 export async function setRoleControl(env,role,payload){
  const db=enabled(env);
@@ -64,7 +73,7 @@ export async function decideCommand(env,id,payload,{dispatch,assignGitHub=assign
  const db=enabled(env);
  if(!payload||Object.keys(payload).length!==1||!['approve','reject'].includes(payload.decision))throw bad('Explicit approve or reject required');
  const item=await db.prepare('SELECT * FROM manager_commands WHERE id=?').bind(id).first();
- if(!item)throw bad('Task not found',404);
+ if(!item)throw bad('Task record not found',404);
  if(item.state!=='AWAITING_APPROVAL')throw bad('Task already decided; no retry',409);
  const claim=async state=>db.prepare("UPDATE manager_commands SET state=?,updated_at=? WHERE id=? AND state='AWAITING_APPROVAL'").bind(state,now(),id).run();
  if(payload.decision==='reject'){
