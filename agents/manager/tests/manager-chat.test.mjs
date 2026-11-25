@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import worker from '../src/worker.mjs';
-import {managerChat,chatHistory,parseMessage} from '../src/manager-chat.mjs';
+import {managerChat,chatHistory,parseMessage,managerModelReadiness} from '../src/manager-chat.mjs';
 const TOKEN='owner-test-token-'.repeat(4);
 function setup(t){
  const sql=new DatabaseSync(':memory:');
@@ -51,7 +51,7 @@ test('agent report uses actual health response, not assumed active agents',async
 test('AI opt-in and atomic daily cap, no automatic actions',async t=>{
  const {env,sql}=setup(t);let calls=0;
  env.AI={run:async()=>{calls++;return {response:'Planning only.'}}};
- env.MANAGER_CHAT_MODEL='@cf/test/model';
+ env.MANAGER_CHAT_MODEL='@cf/meta/llama-3.2-3b-instruct';
  env.MANAGER_CHAT_AI_ENABLED='true';
  const input={synthetic:true,message:'Build a website'};
  assert.equal((await managerChat(env,input)).kind,'unavailable');
@@ -62,4 +62,12 @@ test('AI opt-in and atomic daily cap, no automatic actions',async t=>{
  assert.equal(calls,10);
  assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM jobs').get().n,0);
  assert.equal((await chatHistory(env)).turns.length,12);
+});
+
+test('paid-only and unreviewed models cannot enable chat',()=>{
+ const env={AI:{run(){}},MANAGER_CHAT_AI_ENABLED:'true',MANAGER_CHAT_FREE_CONFIRMED:'true',MANAGER_CHAT_MODEL:'@cf/moonshotai/kimi-k2.7-code'};
+ assert.equal(managerModelReadiness(env).enabled,false);
+ env.MANAGER_CHAT_MODEL='@cf/meta/llama-3.2-3b-instruct';
+ assert.equal(managerModelReadiness(env).enabled,true);
+ assert.equal(managerModelReadiness(env).liveInferenceVerified,false);
 });
