@@ -103,6 +103,7 @@ jobs:
           const bindings=live.bindings;
           assert.ok(Array.isArray(bindings));
           const secrets=['MANAGER_OWNER_TOKEN','ROLE_INTERNAL_TOKEN','AGENT_HEALTH_URLS','AGENT_EXECUTION_URLS'];
+          if(bindings.some(b=>b.name==='GITHUB_TOKEN')){assert.equal(bindings.find(b=>b.name==='GITHUB_TOKEN').type,'secret_text');secrets.push('GITHUB_TOKEN');}
           const variables=['MODE','BUSINESS_CASES_ENABLED','SYNTHETIC_AUTOMATION_ENABLED','MANAGER_COMMANDS_ENABLED','MANAGER_THREADS_ENABLED','MANAGER_STRICT_DELIVERY_ENABLED','MANAGER_CHAT_AI_ENABLED','MANAGER_CHAT_FREE_CONFIRMED','MANAGER_CHAT_MODEL','HQ_BUILD_ID'];
           const services=ROLES.map(role=>({binding:'ROLE_'+role.toUpperCase().replace(/-/g,'_'),service:'mapleweb-role-'+role+'-staging'}));
           for(const name of secrets)assert.equal(bindings.find(b=>b.name===name)?.type,'secret_text','Missing required secret '+name);
