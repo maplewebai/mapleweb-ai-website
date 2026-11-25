@@ -63,6 +63,16 @@ async function main(){
   assert.equal(Object.hasOwn(job.result,'html'),false);
   console.log('PASS: verified remote job '+role);
  }
+ const managerProject=runId+'M';
+ const managerTask=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'run manager for '+managerProject},expected:201});
+ assert.equal(managerTask.proposal.role,'manager');assert.equal(managerTask.proposal.state,'AWAITING_APPROVAL');
+ const managerResult=await req('/api/manager/commands/'+managerTask.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
+ assert.equal(managerResult.state,'COMPLETED');
+ assert.match(managerResult.resultStatus,/8\/8 staging steps confirmed/);
+ assert.equal(managerResult.websiteReleaseAuthorized,false);
+ const managerSaved=await req('/api/manager/commands/'+managerTask.proposal.id);
+ assert.equal(managerSaved.task.state,'COMPLETED');assert.equal(managerSaved.task.result_status,managerResult.resultStatus);
+ console.log('PASS: Manager coordinated all eight verified remote stages and persisted completion');
  const c=await req('/api/business/cases',{method:'POST',body:{caseId:runId},expected:201});
  const review=await req('/api/business/cases/'+runId+'/events',{method:'POST',body:{expectedRevision:c.case.revision,type:'review-request'}});
  const quote=await req('/api/business/cases/'+runId+'/events',{method:'POST',body:{expectedRevision:review.case.revision,type:'prepare-quote',tier:1,fixedQuoteCAD:650}});
