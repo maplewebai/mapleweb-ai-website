@@ -27,7 +27,7 @@ import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness} from './manager-chat.mjs';
 import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
-import {parseCommand,proposeCommand,listCommands,decideCommand,setRoleControl,requireRoleRunning} from './manager-commands.mjs';
+import {parseCommand,proposeCommand,listCommands,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -324,6 +324,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
       ownerApprovedVersion:current.owner_approved,customerApprovedVersion:current.customer_approved};
     if(p.role==='website-developer'&&p.action==='request-revision'&&!current.version)throw bad('No existing draft to revise');
     await requireRoleRunning(env,p.role);
+    if(strictOwnerDelivery(env))requireRemoteRole(env,p.role);
     const result=await runStagingRole(env,p.role,p.action,input,ctx);
     if(savedCaseAudit){
       result.casePreviewStructure=savedCaseAudit;
