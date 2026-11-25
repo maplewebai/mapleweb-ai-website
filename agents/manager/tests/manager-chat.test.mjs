@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import worker from '../src/worker.mjs';
-import {managerChat,chatHistory,parseMessage,managerModelReadiness,modelText,safeModelFailure} from '../src/manager-chat.mjs';
+import {managerChat,chatHistory,parseMessage,managerModelReadiness,managerQuota,modelText,safeModelFailure} from '../src/manager-chat.mjs';
 const TOKEN='owner-test-token-'.repeat(4);
 function setup(t){
  const sql=new DatabaseSync(':memory:');
@@ -82,4 +82,25 @@ test('model text adapters never expose hidden reasoning',()=>{
  assert.equal(modelText({choices:[{message:{reasoning_content:'private'}}]}),null);
  assert.equal(safeModelFailure(new Error('secret diagnostic 3040 private data')),'PROVIDER_3040');
  assert.equal(safeModelFailure(new Error('private data only')),'PROVIDER_REQUEST_FAILED');
+});
+
+test('verified daily quota is read-only, invalid project instructions do not spend AI requests',async t=>{
+ const {env,sql}=setup(t);let calls=0;
+ env.AI={run:async()=>{calls++;return {response:'Planning advice.'}}};
+ env.MANAGER_CHAT_MODEL='@cf/google/gemma-4-26b-a4b-it';
+ env.MANAGER_CHAT_AI_ENABLED='true';env.MANAGER_CHAT_FREE_CONFIRMED='true';
+ const day=new Date().toISOString().slice(0,10);
+ sql.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,10)').run(day);
+ const quota=await managerQuota(env);
+ assert.equal(quota.used,10);assert.equal(quota.remaining,0);assert.equal(quota.exhausted,true);
+ const denied=await worker.fetch(new Request('https://staging.test/api/manager/quota'),env);
+ assert.equal(denied.status,401);
+ const allowed=await worker.fetch(new Request('https://staging.test/api/manager/quota',{headers:{authorization:'Bearer '+TOKEN}}),env);
+ assert.equal(allowed.status,200);assert.equal((await allowed.json()).exhausted,true);
+ const invalid=await managerChat(env,{synthetic:true,message:'run manager for I want you to finish and test'});
+ assert.equal(invalid.kind,'verified-record');assert.match(invalid.reply,/No task was created/);
+ const advice=await managerChat(env,{synthetic:true,message:'Suggest a fictional bakery layout'});
+ assert.equal(advice.kind,'unavailable');assert.equal(advice.aiFailure,'DAILY_ALLOWANCE_EXHAUSTED');
+ assert.equal(calls,0);assert.equal((await managerQuota(env)).used,10);
+ assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM jobs').get().n,0);
 });
