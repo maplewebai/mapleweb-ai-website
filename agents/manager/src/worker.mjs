@@ -28,7 +28,7 @@ import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness,managerQuota} from './manager-chat.mjs';
 import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
-import {parseCommand,interpretOwnerTask,proposeCommand,listCommands,readCommand,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
+import {parseCommand,interpretOwnerTask,resolveProjectRequest,proposeCommand,listCommands,readCommand,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -71,7 +71,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
     const message=parseMessage(payload);
     if(payload.threadId!==undefined)await requireThread(env,payload.threadId);
     const exact=parseCommand(message);
-    const natural=exact?null:interpretOwnerTask(message);
+    const natural=exact?null:(await resolveProjectRequest(env,message)||interpretOwnerTask(message));
     const command=exact||natural?.command;
     if(natural?.reply){
       const createdAt=new Date().toISOString(),reply=natural.reply;
