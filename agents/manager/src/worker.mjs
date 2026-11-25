@@ -26,7 +26,7 @@ import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,own
 import {agentWorkspace,agentMessage,agentTask} from './agent-workspace.mjs';
 import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
-import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness} from './manager-chat.mjs';
+import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness,managerQuota} from './manager-chat.mjs';
 import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
 import {parseCommand,proposeCommand,listCommands,readCommand,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
@@ -64,6 +64,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
     return methodError();
   }
   if(path==='/api/manager/model'&&request.method==='GET')return json(managerModelReadiness(env));
+  if(path==='/api/manager/quota'&&request.method==='GET')return json(await managerQuota(env));
   if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env,u.searchParams.get('threadId')));
   if(path==='/api/manager/chat'&&request.method==='POST'){
     const payload=await readJson(request,3800);
