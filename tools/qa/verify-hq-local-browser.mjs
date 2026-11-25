@@ -110,6 +110,21 @@ try{
     await page.locator('#taskFilter').selectOption('all');
     await text('#commandList','8/8 staging steps confirmed');
     assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(17, 17, 17)');
+    await click('#managerBackChat');
+    await page.locator('#chatMessage').fill('Please create a fictional bakery website and test it');
+    await click('#chatSend');
+    await text('#chatTurns','Task prepared');
+    await visible('#chatTurns .inlineTask');
+    await text('#chatTurns .inlineTask','AWAITING APPROVAL');
+    assert.equal(await page.locator('#managerChatView').isVisible(),true);
+    await page.locator('#chatTurns .inlineTask').getByRole('button',{name:'Approve & run',exact:true}).click();
+    await text('#chatTurns .inlineTask','8/8 staging steps confirmed');
+    await text('#chatTurns .inlineTask','COMPLETED');
+    assert.equal(await page.locator('#managerChatView').isVisible(),true);
+    await page.locator('#chatMessage').fill('Finish and test it');
+    await click('#chatSend');
+    await text('#chatTurns','Which fictional project should I finish and test');
+
 
     if(width<=900)await click('#managerMenu');
     await click('[data-tab="agents"]');
