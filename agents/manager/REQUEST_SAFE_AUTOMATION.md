@@ -15,3 +15,6 @@ Owner explicitly reiterated: NEVER show a website to owner or customers before e
 ## 2026-11-25 owner request: independent first-party Control Center staging app
 
 Owner wants to control Manager and eight agents from a separate app, not GitHub/Cloudflare. Replit Agent stopped due free credits. Deploy current tested `agents/manager/src/control-center.mjs` at isolated existing Manager route `/control` using the existing safe staging workflow, preserving current encrypted secrets, role service bindings, D1 database and synthetic-only daily cron. No paid usage or customer publishing, no public Headquarters edits. The dashboard's demo is visible without login, but all live data/control calls require the existing private Manager owner token. The deployment workflow verifies the actual HTTPS Control Center shell, 401 unauthenticated API, all eight live roles and website QA release block. Report only when full postdeploy tests pass. This is not customer website publication.
+
+### 2026-11-25 mobile QA repair rerun
+Deploy exact current Manager dashboard revision containing the 320px header correction found by real HTTPS browser test. Do not change existing staging-only protections, secrets, D1, cron, or eight role bindings. Rerun real browser QA after deploy and block preview on any failure.
