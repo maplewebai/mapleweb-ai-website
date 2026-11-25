@@ -49,12 +49,24 @@ export async function saveChatTurn(env,{message,reply,kind,createdAt,threadId=nu
   if(threadId!==null)await db.prepare('INSERT INTO manager_chat(message,reply,kind,created_at,thread_id) VALUES(?,?,?,?,?)').bind(message,reply,kind,createdAt,threadId).run();
   else await db.prepare('INSERT INTO manager_chat(message,reply,kind,created_at) VALUES(?,?,?,?)').bind(message,reply,kind,createdAt).run();
 }
+// Accept documented chat completions and legacy Workers binding response shapes.
+export function modelText(result){
+ const content=result?.choices?.[0]?.message?.content;
+ const text=typeof content==='string'?content:typeof result?.response==='string'?result.response:null;
+ return text?.trim()||null;
+}
+export function safeModelFailure(error){
+ const code=String(error?.code??'');
+ const message=String(error?.message??'');
+ for(const known of ['5035','5028','3040','3036','4001','4002','4003','429','401','403','503'])if(code===known||new RegExp('(?:^|[^0-9])'+known+'(?:[^0-9]|$)').test(message))return 'PROVIDER_'+known;
+ return 'PROVIDER_REQUEST_FAILED';
+}
 export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
   const message=parseMessage(payload),threadId=payload.threadId??null;
   if(threadId!==null)await requireThread(env,threadId);
   const db=requireDb(env);
   const intent=classifyMessage(message);
-  let reply,kind='verified-record';
+  let reply,kind='verified-record',aiFailure=null;
   if(intent==='status'){
     reply='The authenticated staging Manager is responding. Its D1 database is available. Live customer operations, publication and payments are disabled. Ask "check agents" for verified role health or "recent jobs" for recorded activity.';
   }else if(intent==='jobs'){
@@ -92,13 +104,14 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
           ]);
           const result=await env.AI.run(env.MANAGER_CHAT_MODEL,{messages:[
             {role:'system',content:'You are MapleWeb AI Manager in private staging. Give concise planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
-            ...conversation,{role:'user',content:message}],max_completion_tokens:384,stream:false,store:false,temperature:0.3});
-          const output=result?.choices?.[0]?.message?.content;
-          if(typeof output!=='string'||!output.trim())throw Error('No supported model text');
+            ...conversation,{role:'user',content:message}],max_completion_tokens:512,stream:false,store:false,temperature:0.3,chat_template_kwargs:{enable_thinking:false}});
+          const output=modelText(result);
+          if(!output){aiFailure=result?.choices?.[0]?.finish_reason==='length'?'EMPTY_LENGTH_LIMIT':'EMPTY_MODEL_TEXT';throw Error('No supported model text');}
           reply='AI planning advice — no job executed:\n'+output.trim().slice(0,2400);
           kind='ai-advice';
-        }catch{
-          reply='The configured AI model did not return a usable response. No job was executed. The reserved request remains counted against the daily limit.';
+        }catch(error){
+          aiFailure=aiFailure||safeModelFailure(error);
+          reply='The configured AI model did not return a usable response ('+aiFailure+'). No job was executed. The reserved request remains counted against the daily limit.';
           kind='unavailable';
         }
       }else reply='The Manager chat daily allowance is exhausted or cannot be confirmed. No AI request or job was executed.';
@@ -106,5 +119,5 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
   }
   const createdAt=new Date().toISOString();
   await saveChatTurn(env,{message,reply,kind,createdAt,threadId});
-  return {message,reply,kind,created_at:createdAt,jobExecuted:false};
+  return {message,reply,kind,created_at:createdAt,jobExecuted:false,...(aiFailure?{aiFailure}:{})};
 }
