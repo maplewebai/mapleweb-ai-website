@@ -28,7 +28,7 @@ import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness,managerQuota} from './manager-chat.mjs';
 import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
-import {parseCommand,proposeCommand,listCommands,readCommand,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
+import {parseCommand,interpretOwnerTask,proposeCommand,listCommands,readCommand,decideCommand,setRoleControl,requireRoleRunning,requireRemoteRole} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -70,13 +70,20 @@ export async function handle(request,env,callingFetchImpl=fetch){
     const payload=await readJson(request,3800);
     const message=parseMessage(payload);
     if(payload.threadId!==undefined)await requireThread(env,payload.threadId);
-    const command=parseCommand(message);
+    const exact=parseCommand(message);
+    const natural=exact?null:interpretOwnerTask(message);
+    const command=exact||natural?.command;
+    if(natural?.reply){
+      const createdAt=new Date().toISOString(),reply=natural.reply;
+      await saveChatTurn(env,{message,reply,kind:'verified-record',createdAt,threadId:payload.threadId??null});
+      return json({message,reply,kind:'verified-record',created_at:createdAt,jobExecuted:false},201);
+    }
     if(command){
       const proposal=await proposeCommand(env,command);
-      const reply='Task saved for owner approval: '+proposal.role+'/'+proposal.action+' on '+proposal.projectId+'. Nothing has been executed. Approve or reject it in Pending tasks.';
+      const reply=natural?'**Task prepared — '+proposal.projectId+'**\n'+natural.scope+'\nAssigned to: '+proposal.role.replaceAll('-',' ')+'.\nNothing has been executed yet. Approve this task in chat to start.\nTask reference: '+proposal.id:'Task saved for owner approval: '+proposal.role+'/'+proposal.action+' on '+proposal.projectId+'. Nothing has been executed. Approve or reject it in Pending tasks.';
       const createdAt=new Date().toISOString();
       await saveChatTurn(env,{message,reply,kind:'verified-record',createdAt,threadId:payload.threadId??null});
-      return json({message,reply,kind:'verified-record',created_at:createdAt,jobExecuted:false,proposal},201);
+      return json({message,reply,kind:'verified-record',created_at:createdAt,jobExecuted:false,proposal,...(natural?{inlineApproval:true}:{})},201);
     }
     return json(await managerChat(env,payload),201);
   }
