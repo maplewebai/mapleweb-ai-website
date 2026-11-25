@@ -42,3 +42,29 @@ export async function upsertDevFile(env,{path,content,message}){
   return {changed:true,path,branch:DEV,commitSha:changed.commit?.sha||null,mainChanged:false};
 }
 export const githubConfig={repository:REPO,devBranch:DEV};
+
+/** Fixed-repository development coordination. No merges, deployment or source changes. */
+export async function githubDevelopmentReport(env){
+ if(!env.GITHUB_TOKEN)return {configured:false,repository:REPO,developmentBranch:DEV,runs:[],reason:'GitHub credential not configured in Manager'};
+ const diagnostic=await diagnoseGitHub(env);
+ const data=await gh(env,`/repos/${REPO}/actions/runs?branch=${DEV}&per_page=5`);
+ return {...diagnostic,runs:(data.workflow_runs||[]).slice(0,5).map(r=>({
+   id:r.id,name:String(r.name||'').slice(0,120),status:r.status,conclusion:r.conclusion||null,
+   commit:String(r.head_sha||'').slice(0,12),updatedAt:r.updated_at
+ }))};
+}
+export async function githubTaskStatus(env,number){
+ if(!Number.isSafeInteger(number)||number<1||number>999999999)throw bad('Invalid development task number');
+ const issue=await gh(env,`/repos/${REPO}/issues/${number}`);
+ if(issue.pull_request)throw bad('Not a development issue',404);
+ if(!String(issue.title||'').startsWith('MapleWeb Manager: '))throw bad('Not a Manager-created development task',404);
+ return {number:issue.number,state:issue.state,title:String(issue.title).slice(0,120),updatedAt:issue.updated_at};
+}
+export async function assignGitHubDevelopmentTask(env,{id,instruction}){
+ if(typeof id!=='string'||!/^[a-f0-9-]{36}$/i.test(id))throw bad('Invalid task ID');
+ if(typeof instruction!=='string'||instruction.length<10||instruction.length>500)throw bad('Development instruction must be 10–500 characters');
+ return createManagerIssue(env,{
+  title:'MapleWeb Manager: development request '+id.slice(0,8),
+  body:'Owner-approved development request.\n\nScope: mapleweb-ai-agents only. Do not modify main or public website, spend money, publish customer websites, enable payment or contact customers. Run tests and report results. This issue is a task record, not proof that a coding executor is running.\n\nInstruction:\n'+instruction+'\n\nManager task ID: '+id
+ });
+}
