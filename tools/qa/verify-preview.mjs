@@ -33,7 +33,7 @@ try{
    const toggle=page.locator('.motion-toggle');
    if(await toggle.count()){await toggle.click();if(!await page.locator('body').evaluate(b=>b.classList.contains('motion-paused')))failures.push(name+': pause control failed')}
    if(width<=390){const menu=page.locator('.menu-toggle');if(await menu.count()){await menu.click();if((await menu.getAttribute('aria-expanded'))!=='true')failures.push(name+': mobile menu failed')}}
-   console.log('Checked '+name+': '+s.count+' images, anchors, layout, autoplay, interactions');
+   console.log('Checked '+name+': '+s.count+' images, anchors, layout, video ready='+s.videoReady+' playing='+s.playing+', interactions');
   }catch(e){failures.push(name+': browser error '+String(e))}
   await context.close();
  }
