@@ -25,7 +25,7 @@ import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,ownerJobResult} from './website-delivery-policy.mjs';
 import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
-import {managerChat,chatHistory,parseMessage,saveChatTurn} from './manager-chat.mjs';
+import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness} from './manager-chat.mjs';
 import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
 import {parseCommand,proposeCommand,listCommands,decideCommand,setRoleControl,requireRoleRunning} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
@@ -54,6 +54,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/manager/model'&&request.method==='GET')return json(managerModelReadiness(env));
   if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env,u.searchParams.get('threadId')));
   if(path==='/api/manager/chat'&&request.method==='POST'){
     const payload=await readJson(request,3800);
