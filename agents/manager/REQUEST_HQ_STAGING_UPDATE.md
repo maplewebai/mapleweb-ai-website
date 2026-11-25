@@ -7,3 +7,5 @@ Retry after supported Ubuntu 24.04 runner correction and GitHub task browser cov
 Retry after task write verification, owner-only readback route and exact error diagnostics. Previous 211 unit checks and four local browser widths passed; previous live update rolled back after a 404 approval. Never bypass approval, retry an ambiguous task execution, or enable AI without a verified free plan.
 
 Retry with exact-build propagation checks: the previous deployment returned a missing thread route immediately after update. Require five consistent exact-build health responses and check every acceptance response header. Stop and roll back if inconsistent. Do not retry ambiguous mutations or enable AI without plan verification.
+
+Owner-authorized free-plan inference test. Replace retired Llama models with supported Gemma 4. Require verified account, bounded requests, exact deployment version, all browser tests and eight role execution checks. No paid fallback, subscription modifications, or AI Gateway credits.
