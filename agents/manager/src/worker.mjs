@@ -23,6 +23,7 @@ import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-
 import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from './website-delivery-policy.mjs';
+import {serveControlCenter} from './control-center.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -36,6 +37,8 @@ export const defaultProject=(id,old=null)=>({id,version:old?.version||0,draft_ht
   qa_passed:0,revision_open:0,owner_approved:0,customer_approved:0});
 export async function handle(request,env,callingFetchImpl=fetch){
   const u=new URL(request.url);const path=u.pathname;
+  if(path==='/control'&&request.method==='GET')return serveControlCenter();
+  if(path==='/control')return methodError();
   if(path==='/health'&&request.method==='GET')return json({service:'mapleweb-manager-rebuilt',
     mode:'staging',deployedWorkerResponding:true,managerReady:!!env.DB&&!!env.MANAGER_OWNER_TOKEN,
     roleDefinitions:8,roleWorkersVerified:0,publishingEnabled:false,paymentsEnabled:false,
