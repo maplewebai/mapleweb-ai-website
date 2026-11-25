@@ -85,6 +85,21 @@ try{
     await text('#roleControls','finance · Paused');
     await page.locator('#roleControls .statusrow').filter({hasText:'finance'}).getByRole('button',{name:'Resume',exact:true}).click();
     await text('#roleControls','finance · New tasks allowed');
+    await page.locator('#chatRole').selectOption('manager');
+    await page.locator('#chatProject').fill('MANAGERQA');
+    await click('#proposeTask');
+    await text('#commandList','manager / coordinate-project');
+    await text('#commandList','AWAITING_APPROVAL');
+    page.once('dialog',d=>d.accept());
+    await page.locator('#commandList .statusrow').filter({hasText:'MANAGERQA'}).getByRole('button',{name:'Approve',exact:true}).click();
+    await text('#commandList','8/8 staging steps confirmed');
+    await text('#countDone','2');
+    await page.locator('#taskFilter').selectOption('AWAITING_APPROVAL');
+    await text('#commandList','No matching saved tasks');
+    await page.locator('#taskFilter').selectOption('all');
+    await text('#commandList','8/8 staging steps confirmed');
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(9, 9, 9)');
+
     page.once('dialog',d=>d.accept('Local QA conversation'));
     await click('#newThread');
     await visible('#threadAttachments');
