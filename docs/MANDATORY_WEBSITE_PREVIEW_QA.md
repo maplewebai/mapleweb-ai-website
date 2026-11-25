@@ -1,5 +1,19 @@
 # MapleWeb AI — Mandatory website QA before any preview or delivery
 
+## Permanent owner mandate — applies to every website and every recipient
+
+> **Never show or release any website, website preview, file download, ZIP, screenshot, or publishable URL to the owner OR to a customer until the exact final website version is independently tested, all required checks pass, and zero known blocking defects remain.**
+
+- The Website Manager **must enforce this as a release gate**, not merely record it as policy. The Website Developer cannot bypass the Quality Checker or expose a preview link. A static staging `LOCAL_QA_PASSED` response is insufficient.
+- **Owner gate:** complete QA evidence for the *exact* website content and all assets, pinned to the candidate's version and SHA-256; all required desktop, mobile, video, image, menu, motion, accessibility, security, visual and real-delivery tests pass; no blocking defects remain. Only then may the Manager present the owner with that tested version.
+- **Customer gate:** the same complete technical QA **plus** explicit verified owner review/release authorization and any required customer permissions. No customer-facing preview or publication before both gates. Customer publication remains disabled in the current staging environment.
+- **Automatic invalidation:** any changed asset, code, content, deployment URL/packaging, or revision invalidates the previous QA approval and sends the candidate back to tests.
+- **Failed, uncertain or unrun checks:** mark **BLOCKED_QA**; no links, screenshots, ZIPs or previews for owner or customer. Provide a *status report only*, fix faults, and rerun.
+- The test suite cannot guarantee all future bugs are impossible. Describe completion as **passed mandatory tests with no known blocking defects**, not as a warranty of perfection.
+- **Known regression:** Samsung Chrome with downloaded `content://media/` HTML displayed broken images although 47 images passed headless browser QA. A website must be tested in its *actual distribution mode* or via a verified HTTPS hosting preview before delivery. Ember & Oak remains blocked for Samsung-device signoff. See manager task [#10](https://github.com/maplewebai/mapleweb-ai-website/issues/10).
+- Live Manager enforcement of these rules is an **implementation requirement**, not yet confirmed by this document. A green GitHub Action test alone must never authorize delivery.
+
+
 **Owner instruction (2026-11-24):** Do not show a website to anyone, including the owner, before checking the exact final build and fixing defects. A basic static HTML check is NOT final QA.
 
 ## Strict workflow
