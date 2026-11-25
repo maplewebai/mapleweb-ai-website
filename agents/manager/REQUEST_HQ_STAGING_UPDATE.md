@@ -9,3 +9,5 @@ Retry after task write verification, owner-only readback route and exact error d
 Retry with exact-build propagation checks: the previous deployment returned a missing thread route immediately after update. Require five consistent exact-build health responses and check every acceptance response header. Stop and roll back if inconsistent. Do not retry ambiguous mutations or enable AI without plan verification.
 
 Owner-authorized free-plan inference test. Replace retired Llama models with supported Gemma 4. Require verified account, bounded requests, exact deployment version, all browser tests and eight role execution checks. No paid fallback, subscription modifications, or AI Gateway credits.
+
+Correct free-plan check to account for default Workers Free with no explicit subscription entry. Owner-confirmed free tier, reject conflicting Workers subscriptions, retain no-paid-fallback restriction. Run exact build and live AI acceptance once.
