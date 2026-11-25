@@ -8,7 +8,7 @@ const TOKEN='owner-test-token-'.repeat(4);
 function setup(t){
  const sql=new DatabaseSync(':memory:');
  t.after(()=>sql.close());
- for(const file of ['0001_init.sql','0004_manager_chat.sql'])sql.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+ for(const file of ['0001_init.sql','0004_manager_chat.sql','0007_chat_usage.sql'])sql.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
  return {sql,env:{MANAGER_OWNER_TOKEN:TOKEN,DB:{prepare(statement){let args=[];return {
    bind(...values){args=values;return this},
    all(){return {results:sql.prepare(statement).all(...args)}},
@@ -90,7 +90,7 @@ test('usage counter is read-only, invalid instructions use no AI and provider ex
  env.MANAGER_CHAT_MODEL='@cf/google/gemma-4-26b-a4b-it';
  env.MANAGER_CHAT_AI_ENABLED='true';env.MANAGER_CHAT_FREE_CONFIRMED='true';
  const day=new Date().toISOString().slice(0,10);
- sql.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,10)').run(day);
+ sql.prepare('INSERT INTO manager_chat_usage(day,used) VALUES(?,10)').run(day);
  const quota=await managerQuota(env);
  assert.equal(quota.used,10);assert.equal(quota.cap,null);assert.equal(quota.remaining,null);
  const denied=await worker.fetch(new Request('https://staging.test/api/manager/quota'),env);
