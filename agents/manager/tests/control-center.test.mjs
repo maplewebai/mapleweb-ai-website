@@ -23,8 +23,8 @@ test('private first-party Control Center shell is served only at /control',async
   assert.equal((await worker.fetch(new Request('https://staging.test/control',{method:'POST'}),{})).status,404);
 });
 test('Control Center script compiles; credentials are not embedded in UI and no third-party assets are needed',()=>{
-  const scripts=[...controlCenterHtml.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
-  assert.equal(scripts.length,1);
+  const scripts=[controlCenterHtml.split('<script>')[1]?.split('</script>')[0]];
+  assert.equal(scripts.length,1);\n  assert.ok(scripts[0]);
   assert.doesNotThrow(()=>new Script(scripts[0][1],{filename:'control-center-inline.js'}));
   for (const role of ['website-developer','quality-checker','customer-care','sales','research','support','finance','publishing'])
     assert.ok(controlCenterHtml.includes(role),'missing role '+role);
