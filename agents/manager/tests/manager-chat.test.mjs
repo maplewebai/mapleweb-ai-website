@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import worker from '../src/worker.mjs';
-import {managerChat,chatHistory,parseMessage,managerModelReadiness} from '../src/manager-chat.mjs';
+import {managerChat,chatHistory,parseMessage,managerModelReadiness,modelText,safeModelFailure} from '../src/manager-chat.mjs';
 const TOKEN='owner-test-token-'.repeat(4);
 function setup(t){
  const sql=new DatabaseSync(':memory:');
@@ -74,4 +74,12 @@ test('paid-only and unreviewed models cannot enable chat',()=>{
 
 test('retired models stay disabled',()=>{
  for(const model of ['@cf/meta/llama-3.2-3b-instruct','@cf/meta/llama-3.2-1b-instruct'])assert.equal(managerModelReadiness({AI:{run(){}},MANAGER_CHAT_MODEL:model,MANAGER_CHAT_AI_ENABLED:'true',MANAGER_CHAT_FREE_CONFIRMED:'true'}).enabled,false);
+});
+
+test('model text adapters never expose hidden reasoning',()=>{
+ assert.equal(modelText({response:' Legacy text '}),'Legacy text');
+ assert.equal(modelText({choices:[{message:{content:' Normal answer ',reasoning_content:'private'}}]}),'Normal answer');
+ assert.equal(modelText({choices:[{message:{reasoning_content:'private'}}]}),null);
+ assert.equal(safeModelFailure(new Error('secret diagnostic 3040 private data')),'PROVIDER_3040');
+ assert.equal(safeModelFailure(new Error('private data only')),'PROVIDER_REQUEST_FAILED');
 });
