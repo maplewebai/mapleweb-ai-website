@@ -22,7 +22,7 @@ import {submitFictionalOrder,ownerFictionalOrderProgress} from './fictional-orde
 import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-order-queue.mjs';
 import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
-import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from './website-delivery-policy.mjs';
+import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,ownerJobResult} from './website-delivery-policy.mjs';
 import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn} from './manager-chat.mjs';
@@ -244,6 +244,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
     }
     const bundlePath=path.match(/^\/api\/business\/cases\/([A-Z0-9_-]{3,30})\/fictional-bundle$/);
     if(bundlePath&&request.method==='GET'){
+      if(strictOwnerDelivery(env))throw bad('Website files withheld until verified exact-build QA',423);
       const existing=await readBusinessCase(env,bundlePath[1]);
       if(!existing)return json({error:'Case not found'},404);
       if(existing.stage!=='QUOTE_READY'||existing.quote?.status!=='DRAFT_NOT_SENT')
@@ -268,7 +269,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
       const result=await createCaseStagingDraft(env,existing);
       return json({status:'STAGING_DRAFT_READY_FOR_QA',
         project:projectView(await project(env.DB,result.projectId)),
-        draft:result.draft},201);
+        ...(strictOwnerDelivery(env)?{delivery:WEBSITE_DELIVERY_POLICY}:{draft:result.draft})},201);
     }
     return methodError();
   }
@@ -278,6 +279,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/integrations/kimi'&&request.method==='GET')
     return json(createKimiModelApi(env).status());
   if(path==='/api/integrations/kimi/synthetic-draft'&&request.method==='POST'){
+    if(strictOwnerDelivery(env))throw bad('Direct AI source export is blocked in the owner app',423);
     const brief=validateSynthetic(await readJson(request));
     return json(await createKimiModelApi(env).createSyntheticCodeDraft(brief));
   }
@@ -341,14 +343,14 @@ export async function handle(request,env,callingFetchImpl=fetch){
     const id=crypto.randomUUID();
     await saveJob(db,{id,projectId:p.projectId,role:p.role,action:p.action,input,result});
     await audit(db,'synthetic-job',`${p.role}/${p.action} on ${p.projectId}`);
-    return json({jobId:id,project:projectView(await project(db,p.projectId)),result},201);
+    return json({jobId:id,project:projectView(await project(db,p.projectId)),result:ownerJobResult(env,result)},201);
   }
   const matchJob=path.match(/^\/api\/jobs\/([0-9a-f-]{36})$/);
   if(matchJob&&request.method==='GET'){
     const item=await fetchJob(requireDb(env),matchJob[1]);
     if(!item)return json({error:'Not found'},404);
     return json({id:item.id,projectId:item.project_id,role:item.role,action:item.action,
-      result:JSON.parse(item.result_json),createdAt:item.created_at});
+      result:ownerJobResult(env,JSON.parse(item.result_json)),createdAt:item.created_at});
   }
   const matchProject=path.match(/^\/api\/projects\/([A-Z0-9_-]{3,30})$/);
   if(matchProject&&request.method==='GET'){
