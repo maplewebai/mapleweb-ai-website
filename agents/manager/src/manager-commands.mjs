@@ -2,6 +2,7 @@
 import {bad,validateSynthetic,idIsSafe} from './security.mjs';
 import {requireDb} from './store.mjs';
 import {ROLES} from './roles.mjs';
+import {assignGitHubDevelopmentTask} from './github.mjs';
 const now=()=>new Date().toISOString();
 const TASKS={
  'website-developer':{action:'build-draft',input:{business:'Fictional Maple sample',description:'Private staging website draft for independent QA.'}},
@@ -14,6 +15,13 @@ const TASKS={
  'publishing':{action:'readiness',input:{}}
 };
 export function parseCommand(message){
+ const github=message.trim().match(/^github task: (.{10,500})$/i);
+ if(github){
+   const instruction=github[1].trim();
+   if(instruction.length<10)return null;
+   validateSynthetic({synthetic:true,instruction});
+   return {role:'github',projectId:'MAPLEWEB',action:'create-development-task',input:{instruction}};
+ }
  const m=message.trim().match(/^run (website-developer|customer-care|sales|research|quality-checker|support|finance|publishing) for ([a-z0-9_-]{3,30})[.!]?$/i);
  if(!m)return null;
  const role=m[1].toLowerCase(),projectId=m[2].toUpperCase();
@@ -38,7 +46,7 @@ export async function listCommands(env){
  const db=enabled(env);
  const tasks=await db.prepare('SELECT id,role,action,project_id,state,job_id,result_status,created_at,updated_at FROM manager_commands ORDER BY created_at DESC LIMIT 30').all();
  const roles=await db.prepare('SELECT role,paused FROM manager_role_controls').all();
- return {tasks:tasks.results||[],roles:ROLES.map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
+ return {tasks:tasks.results||[],roles:[...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
 }
 export async function proposeCommand(env,command){
  const db=enabled(env);
@@ -48,11 +56,11 @@ export async function proposeCommand(env,command){
 }
 export async function setRoleControl(env,role,payload){
  const db=enabled(env);
- if(!ROLES.includes(role)||!payload||typeof payload.paused!=='boolean'||Object.keys(payload).length!==1)throw bad('Invalid role control');
+ if(![...ROLES,'github'].includes(role)||!payload||typeof payload.paused!=='boolean'||Object.keys(payload).length!==1)throw bad('Invalid role control');
  await db.prepare('INSERT INTO manager_role_controls(role,paused,updated_at) VALUES(?,?,?) ON CONFLICT(role) DO UPDATE SET paused=excluded.paused,updated_at=excluded.updated_at').bind(role,payload.paused?1:0,now()).run();
  return {role,paused:payload.paused,scope:'New Manager job dispatch only; already-running jobs are not cancelled'};
 }
-export async function decideCommand(env,id,payload,{dispatch}={}){
+export async function decideCommand(env,id,payload,{dispatch,assignGitHub=assignGitHubDevelopmentTask}={}){
  const db=enabled(env);
  if(!payload||Object.keys(payload).length!==1||!['approve','reject'].includes(payload.decision))throw bad('Explicit approve or reject required');
  const item=await db.prepare('SELECT * FROM manager_commands WHERE id=?').bind(id).first();
@@ -64,6 +72,20 @@ export async function decideCommand(env,id,payload,{dispatch}={}){
    return {id,state:'REJECTED'};
  }
  await requireRoleRunning(env,item.role);
+ if(item.role==='github'){
+   if(item.action!=='create-development-task')throw bad('Unsupported GitHub task');
+   if(!env.GITHUB_TOKEN)throw bad('GitHub credential not configured in Manager',503);
+   const input=validateSynthetic({synthetic:true,instruction:JSON.parse(item.input_json).instruction});
+   if((await claim('RUNNING')).meta?.changes!==1)throw bad('Task already decided',409);
+   let jobId=null,resultStatus='GITHUB_REQUEST_NOT_CONFIRMED',state='FAILED_OR_UNCERTAIN';
+   try{
+     const result=await assignGitHub(env,{id,instruction:input.instruction});
+     if(result.created!==true||!Number.isSafeInteger(result.number)||result.number<1)throw Error('Issue creation not confirmed');
+     jobId='github-issue-'+result.number;resultStatus='ISSUE_CREATED_NOT_EXECUTION: #'+result.number;state='COMPLETED';
+   }catch{/* do not retry an ambiguous issue creation */}
+   await db.prepare("UPDATE manager_commands SET state=?,job_id=?,result_status=?,updated_at=? WHERE id=? AND state='RUNNING'").bind(state,jobId,resultStatus,now(),id).run();
+   return {id,state,jobId,resultStatus,websiteReleaseAuthorized:false};
+ }
  // No fallback to local deterministic role functions for chat-approved remote jobs.
  requireRemoteRole(env,item.role);
  if(typeof dispatch!=='function')throw bad('Manager dispatch unavailable',503);
