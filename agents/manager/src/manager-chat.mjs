@@ -6,7 +6,7 @@ import {requireThread} from './manager-threads.mjs';
 import {githubDevelopmentReport,githubTaskStatus} from './github.mjs';
 
 // Explicit low-cost model selection; no paid-tier or arbitrary model fallback.
-export const MANAGER_FREE_MODELS=Object.freeze(['@cf/meta/llama-3.2-3b-instruct','@cf/meta/llama-3.2-1b-instruct']);
+export const MANAGER_FREE_MODELS=Object.freeze(["@cf/google/gemma-4-26b-a4b-it"]);
 export function managerModelReadiness(env={}){
   const model=MANAGER_FREE_MODELS.includes(env.MANAGER_CHAT_MODEL)?env.MANAGER_CHAT_MODEL:null;
   const bindingConfigured=typeof env.AI?.run==='function';
@@ -92,9 +92,10 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
           ]);
           const result=await env.AI.run(env.MANAGER_CHAT_MODEL,{messages:[
             {role:'system',content:'You are MapleWeb AI Manager in private staging. Give concise planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
-            ...conversation,{role:'user',content:message}],max_tokens:384});
-          if(typeof result?.response!=='string'||!result.response.trim())throw Error('No supported model text');
-          reply='AI planning advice — no job executed:\n'+result.response.trim().slice(0,2400);
+            ...conversation,{role:'user',content:message}],max_completion_tokens:384,stream:false,store:false,temperature:0.3});
+          const output=result?.choices?.[0]?.message?.content;
+          if(typeof output!=='string'||!output.trim())throw Error('No supported model text');
+          reply='AI planning advice — no job executed:\n'+output.trim().slice(0,2400);
           kind='ai-advice';
         }catch{
           reply='The configured AI model did not return a usable response. No job was executed. The reserved request remains counted against the daily limit.';
