@@ -50,8 +50,8 @@ test('agent report uses actual health response, not assumed active agents',async
 });
 test('AI opt-in and atomic daily cap, no automatic actions',async t=>{
  const {env,sql}=setup(t);let calls=0;
- env.AI={run:async()=>{calls++;return {response:'Planning only.'}}};
- env.MANAGER_CHAT_MODEL='@cf/meta/llama-3.2-3b-instruct';
+ env.AI={run:async()=>{calls++;return {choices:[{message:{content:'Planning only.'}}]}}};
+ env.MANAGER_CHAT_MODEL='@cf/google/gemma-4-26b-a4b-it';
  env.MANAGER_CHAT_AI_ENABLED='true';
  const input={synthetic:true,message:'Build a website'};
  assert.equal((await managerChat(env,input)).kind,'unavailable');
@@ -67,7 +67,11 @@ test('AI opt-in and atomic daily cap, no automatic actions',async t=>{
 test('paid-only and unreviewed models cannot enable chat',()=>{
  const env={AI:{run(){}},MANAGER_CHAT_AI_ENABLED:'true',MANAGER_CHAT_FREE_CONFIRMED:'true',MANAGER_CHAT_MODEL:'@cf/moonshotai/kimi-k2.7-code'};
  assert.equal(managerModelReadiness(env).enabled,false);
- env.MANAGER_CHAT_MODEL='@cf/meta/llama-3.2-3b-instruct';
+ env.MANAGER_CHAT_MODEL='@cf/google/gemma-4-26b-a4b-it';
  assert.equal(managerModelReadiness(env).enabled,true);
  assert.equal(managerModelReadiness(env).liveInferenceVerified,false);
+});
+
+test('retired models stay disabled',()=>{
+ for(const model of ['@cf/meta/llama-3.2-3b-instruct','@cf/meta/llama-3.2-1b-instruct'])assert.equal(managerModelReadiness({AI:{run(){}},MANAGER_CHAT_MODEL:model,MANAGER_CHAT_AI_ENABLED:'true',MANAGER_CHAT_FREE_CONFIRMED:'true'}).enabled,false);
 });
