@@ -127,6 +127,17 @@ async function main(){
  const batchResult=await req('/api/manager/commands/'+batch.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
  assert.equal(batchResult.state,'COMPLETED');assert.match(batchResult.resultStatus,/4\/4 basic drafts structurally checked/);assert.equal(batchResult.websiteReleaseAuthorized,false);
  console.log('PASS: four fictional draft workflow, structural checks, and blocked publication');
+ const existingId=natural.proposal.projectId;
+ const projectStatus=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Give me an update on '+existingId},expected:201});
+ assert.equal(projectStatus.kind,'verified-record');assert.match(projectStatus.reply,/draft version/);assert.equal(projectStatus.jobExecuted,false);
+ const before=await req('/api/projects/'+existingId);
+ const namedQA=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Finish and test the '+existingId+' website'},expected:201});
+ assert.equal(namedQA.proposal.role,'quality-checker');assert.equal(namedQA.proposal.projectId,existingId);assert.equal(namedQA.jobExecuted,false);
+ const qa=await req('/api/manager/commands/'+namedQA.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
+ assert.equal(qa.state,'COMPLETED');assert.equal(qa.resultStatus,'LOCAL_QA_PASSED');assert.equal(qa.websiteReleaseAuthorized,false);
+ const after=await req('/api/projects/'+existingId);
+ assert.equal(after.project.version,before.project.version);
+ console.log('PASS: named project status, owner-approved structural QA and unchanged existing draft version');
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
