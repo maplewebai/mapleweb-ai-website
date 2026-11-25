@@ -12,16 +12,16 @@ export function managerModelReadiness(env={}){
   const bindingConfigured=typeof env.AI?.run==='function';
   const freePlanConfirmed=env.MANAGER_CHAT_FREE_CONFIRMED==='true';
   const enabled=env.MANAGER_CHAT_AI_ENABLED==='true'&&freePlanConfirmed&&bindingConfigured&&!!model;
-  return {enabled,bindingConfigured,freePlanConfirmed,model,liveInferenceVerified:false,dailyRequestCap:10,paidFallback:false};
+  return {enabled,bindingConfigured,freePlanConfirmed,model,liveInferenceVerified:false,dailyRequestCap:null,providerFreeNeuronLimit:10000,paidFallback:false};
 }
-// Read-only quota information for the owner and release verification. Never reset or bypass the counter.
+// Read-only quota information for the owner and release verification. Count attempts without an arbitrary message cap.
 export async function managerQuota(env){
- const day=new Date().toISOString().slice(0,10),cap=10,db=requireDb(env);
+ const day=new Date().toISOString().slice(0,10),db=requireDb(env);
  const rows=await db.prepare('SELECT used FROM manager_chat_quota WHERE day=?').bind(day).all();
  const used=rows.results?.[0]?.used??0;
- if(!Number.isSafeInteger(used)||used<0||used>cap)throw bad('Chat allowance cannot be confirmed',503);
+ if(!Number.isSafeInteger(used)||used<0)throw bad('Chat allowance cannot be confirmed',503);
  const resetAt=new Date(Date.parse(day+'T00:00:00Z')+86400000).toISOString();
- return {day,used,cap,remaining:cap-used,resetAt,exhausted:used===cap};
+ return {day,used,cap:null,remaining:null,resetAt,exhausted:null,providerFreeNeuronLimit:10000};
 }
 export function parseMessage(payload) {
   if (!payload || typeof payload!=='object' || Array.isArray(payload) ||
@@ -76,7 +76,9 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
   const db=requireDb(env);
   const intent=agentRole?'advice':classifyMessage(message);
   let reply,kind='verified-record',aiFailure=null;
-  if(intent==='status'){
+  if(/^(?:hi|hello|hey|good morning|good evening|help|what can you do)[!.?]*$/i.test(message.trim())){
+    reply='Hello! I can help you assign supported staging tasks, check agents and review recorded work. Try asking me to create four new fictional websites and test them, or prepare a quote for tier 3. General AI advice depends on the provider’s free compute allowance.';
+  }else if(intent==='status'){
     reply='The authenticated staging Manager is responding. Its D1 database is available. Live customer operations, publication and payments are disabled. Ask "check agents" for verified role health or "recent jobs" for recorded activity.';
   }else if(intent==='jobs'){
     const jobs=await listJobs(db);
@@ -100,10 +102,10 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
     kind='unavailable';
     reply='Natural-language AI is not connected yet. I have not assigned or executed your instruction. You can use the agent controls for supported staging jobs, or ask "status", "recent jobs" or "check agents". No website is released without independent final-build QA.';
     // Opt-in only. Provider account free-tier confirmation is a separate
-    // hosting-side gate. This app cap is not a guarantee of account-wide quota.
+    // hosting-side gate. The provider enforces the free-plan compute allowance; keep attempt accounting.
     if(managerModelReadiness(env).enabled){
       const day=new Date().toISOString().slice(0,10);
-      const reservation=await db.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET used=used+1 WHERE used<10').bind(day).run();
+      const reservation=await db.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET used=used+1 ').bind(day).run();
       if(reservation.meta?.changes===1){
         try{
           // Only the last three advice exchanges are sent, each bounded. Stored
@@ -122,13 +124,10 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
           kind='ai-advice';
         }catch(error){
           aiFailure=aiFailure||safeModelFailure(error);
-          reply='The configured AI model did not return a usable response ('+aiFailure+'). No job was executed. The reserved request remains counted against the daily limit.';
+          reply=aiFailure==='PROVIDER_3036'?'Cloudflare’s free AI compute allowance is exhausted. I can still handle supported task assignments and status checks. No job was executed.': 'The AI provider did not return a usable response ('+aiFailure+'). Supported tasks and status checks remain available. No job was executed.';
           kind='unavailable';
         }
-      }else{
-        const quota=await managerQuota(env);
-        if(quota.exhausted){aiFailure='DAILY_ALLOWANCE_EXHAUSTED';reply='The daily AI allowance is exhausted (10 of 10 requests). It resets at '+quota.resetAt.replace('T',' ').slice(0,16)+' UTC. You can still check agent status, read task records and assign supported tasks. No AI request or job was executed.';}
-        else{aiFailure='DAILY_ALLOWANCE_UNCONFIRMED';reply='The AI allowance could not be confirmed. No AI request or job was executed. Verified task and status controls remain available.';}
+      }else{aiFailure='USAGE_RECORD_UNAVAILABLE';reply='AI usage could not be recorded safely. Supported tasks and status checks remain available.';
       }
     }
   }
