@@ -29,3 +29,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Validate and deploy plain-English Manager chat assignments, scope previews, in-chat approval and verified task results. Test natural-language routing without AI quota, clarify ambiguous tasks and retain all staging safeguards and rollback checks.
 
 - 2026-11-25: Deploy removal of the app-level ten-message limit on the verified free plan. Preserve usage records with migration 0007, provider free-compute limits, owner approvals and rollback checks. Verify four-draft workflow and blocked publishing. No paid fallback or live customer operations.
+
+- 2026-11-25: Validate and deploy saved-project lookup and plain-English QA assignments for named existing websites. Verify project records, explicit owner approval, unchanged draft version, no publication and current no-paid-fallback AI configuration.
