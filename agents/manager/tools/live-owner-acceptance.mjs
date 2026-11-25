@@ -74,7 +74,7 @@ async function main(){
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
   assert.equal(model.enabled,true,'Free-model binding not enabled');
   const ai=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Suggest three improvements for a fictional bakery website.'},expected:201});
-  assert.equal(ai.kind,'ai-advice');assert.equal(ai.jobExecuted,false);assert.ok(ai.reply.length>40);
+  assert.equal(ai.kind,'ai-advice','AI inference: '+(/^(?:PROVIDER_[A-Z0-9_]+|EMPTY_[A-Z0-9_]+)$/.test(ai.aiFailure||'')?ai.aiFailure:'NO_SAFE_DIAGNOSTIC'));assert.equal(ai.jobExecuted,false);assert.ok(ai.reply.length>40);
   console.log('PASS: actual configured Workers AI response');
  }else{console.log('NOT VERIFIED: live AI inference (explicit free-plan test authorization required)');process.exitCode=2;}
  console.log('No customer delivery or payment operations tested or enabled. Browser/device verification remains a separate release gate.');
