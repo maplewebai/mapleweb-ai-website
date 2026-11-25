@@ -162,12 +162,17 @@ jobs:
           export MAPLEWEB_AI_TEST_AUTHORIZED="$ai_enabled"
           rc=0
           node tools/live-owner-acceptance.mjs || rc=$?
-          if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then rollback; exit 1; fi
+          if [ "$rc" != 0 ] && [ "$rc" != 2 ] && [ "$rc" != 3 ]; then rollback; exit 1; fi
           get "$script/schedules" /tmp/hq-cron-after.json
           if ! diff <(jq -S '.result.schedules|map(.cron)|sort' /tmp/hq-cron-before.json) <(jq -S '.result.schedules|map(.cron)|sort' /tmp/hq-cron-after.json); then rollback; exit 1; fi
           if [ "$rc" = 2 ]; then
             echo "Staging deployment and remote tasks passed. AI inference NOT verified; account free-plan check not confirmed." >> "$GITHUB_STEP_SUMMARY"
             exit 1
+          fi
+          if [ "$rc" = 3 ]; then
+            echo "::warning::Verified daily AI allowance exhausted. Full-screen UI and remote task controls passed; fresh AI inference not verified. Quota unchanged."
+            echo "STAGING UI AND TASKS VERIFIED. Fresh AI inference not verified: confirmed daily allowance exhausted. No quota bypass." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
           echo "Staging API acceptance passed, including model response. Final real-phone QA and production business operations remain separate." >> "$GITHUB_STEP_SUMMARY"
       - name: Scope
