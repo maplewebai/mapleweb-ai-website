@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {parseCommand,interpretOwnerTask,proposeCommand,decideCommand,listCommands,setRoleControl,requireRoleRunning} from '../src/manager-commands.mjs';
+import {parseCommand,interpretOwnerTask,resolveProjectRequest,proposeCommand,decideCommand,listCommands,setRoleControl,requireRoleRunning} from '../src/manager-commands.mjs';
 import worker from '../src/worker.mjs';
 const token='test-owner-'.repeat(5);
 function setup(t){
@@ -205,4 +205,23 @@ test('four new sample drafts require approval and never publish',async t=>{
  assert.equal(result.state,'COMPLETED');assert.match(result.resultStatus,/4\/4 basic drafts structurally checked/);
  assert.equal(result.websiteReleaseAuthorized,false);
  await assert.rejects(decideCommand(env,task.id,{decision:'approve'}),/already decided/);
+});
+
+test('named project status and QA use actual saved draft, never invent or overwrite it',async t=>{
+ const env=setup(t);
+ assert.match((await resolveProjectRequest(env,'Finish and test the Coventry project')).reply,/could not find a saved website draft with project ID COVENTRY/);
+ const {saveProject}=await import('../src/store.mjs');
+ await saveProject(env.DB,{id:'COVENTRY',version:2,draft_html:'private test draft',qa_passed:0,revision_open:0,owner_approved:0,customer_approved:0});
+ const status=await resolveProjectRequest(env,'Give me an update on Coventry');
+ assert.match(status.reply,/draft version 2/);
+ const request=await resolveProjectRequest(env,'Please finish and test the Coventry website and publish it');
+ assert.equal(request.command.role,'quality-checker');assert.equal(request.command.projectId,'COVENTRY');
+ assert.match(request.scope,/No rebuild/);assert.match(request.scope,/publication/);
+ const res=await worker.fetch(new Request('https://staging.test/api/manager/chat',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({synthetic:true,message:'Test the Coventry website'})}),env);
+ assert.equal(res.status,201);const turn=await res.json();assert.equal(turn.inlineApproval,true);assert.equal(turn.jobExecuted,false);
+ const {project}=await import('../src/store.mjs');
+ assert.equal((await project(env.DB,'COVENTRY')).version,2);
+ assert.equal((await project(env.DB,'COVENTRY')).draft_html,'private test draft');
+ assert.equal(await resolveProjectRequest(env,'Do not test the Coventry website'),null);
+ assert.match((await resolveProjectRequest(env,'Publish the Coventry website')).reply,/Publishing and links are blocked/);
 });
