@@ -109,7 +109,7 @@ try{
     await text('#commandList','No matching saved tasks');
     await page.locator('#taskFilter').selectOption('all');
     await text('#commandList','8/8 staging steps confirmed');
-    assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(9, 9, 9)');
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(17, 17, 17)');
 
     if(width<=900)await click('#managerMenu');
     await click('[data-tab="agents"]');
