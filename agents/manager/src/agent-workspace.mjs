@@ -21,10 +21,10 @@ export async function agentWorkspace(env,role){
  const {db,id,title}=context(env,role);
  const thread=await db.prepare('SELECT title FROM manager_threads WHERE id=?').bind(id).first();
  if(thread&&thread.title!==title)throw bad('Agent conversation identity unavailable',503);
- const tasks=await db.prepare('SELECT id,role,action,project_id,state,job_id,result_status,created_at,updated_at FROM manager_commands WHERE role=? ORDER BY created_at DESC LIMIT 30').bind(role).all();
+ const tasks=await db.prepare('SELECT id,role,action,project_id,state,job_id,result_status,created_at,updated_at,input_json FROM manager_commands WHERE role=? ORDER BY created_at DESC LIMIT 30').bind(role).all();
  const jobs=await db.prepare("SELECT id,project_id,role,action,created_at,json_extract(result_json,'$.status') AS result_status FROM jobs WHERE role=? ORDER BY created_at DESC LIMIT 30").bind(role).all();
  const pause=await db.prepare('SELECT paused FROM manager_role_controls WHERE role=?').bind(role).first();
- return {role,paused:pause?.paused===1,tasks:tasks.results||[],jobs:jobs.results||[],turns:thread?(await chatHistory(env,id)).turns:[],mode:'staging',historyLimit:30};
+ return {role,paused:pause?.paused===1,tasks:(tasks.results||[]).map(({input_json,...t})=>{const i=JSON.parse(input_json);return {...t,detail:role==='website-developer'?i.description:role==='research'?i.sector:role==='sales'?'Tier '+i.tier:role==='support'?i.category:null}}),jobs:jobs.results||[],turns:thread?(await chatHistory(env,id)).turns:[],mode:'staging',historyLimit:30};
 }
 async function record(env,id,message,reply,extra={}){
  const createdAt=new Date().toISOString(),kind='verified-record';
