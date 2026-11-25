@@ -63,6 +63,9 @@ export async function githubTaskStatus(env,number){
 export async function assignGitHubDevelopmentTask(env,{id,instruction}){
  if(typeof id!=='string'||!/^[a-f0-9-]{36}$/i.test(id))throw bad('Invalid task ID');
  if(typeof instruction!=='string'||instruction.length<10||instruction.length>500)throw bad('Development instruction must be 10–500 characters');
+ // Never send a private chat instruction to a public repository issue.
+ const repo=await gh(env,`/repos/${REPO}`);
+ if(repo.private!==true)return {created:false,blocked:true,reason:'PUBLIC_REPOSITORY_PRIVATE_INSTRUCTION_BLOCKED'};
  return createManagerIssue(env,{
   title:'MapleWeb Manager: development request '+id.slice(0,8),
   body:'Owner-approved development request.\n\nScope: mapleweb-ai-agents only. Do not modify main or public website, spend money, publish customer websites, enable payment or contact customers. Run tests and report results. This issue is a task record, not proof that a coding executor is running.\n\nInstruction:\n'+instruction+'\n\nManager task ID: '+id
