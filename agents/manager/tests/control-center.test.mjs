@@ -10,7 +10,7 @@ test('private first-party Control Center shell is served only at /control',async
   assert.equal(html,controlCenterHtml);
   assert.match(html,/MapleWeb AI — Control Center/);
   assert.match(html,/Website Manager/);
-  assert.match(html,/Run safe eight-agent demo/);
+  assert.match(html,/Run eight-agent staging check/);
   assert.match(html,/DEMO MODE/);
   assert.match(html,/No website may be shown/);
   assert.match(html,/No customer operations|No real customer operations/i);
