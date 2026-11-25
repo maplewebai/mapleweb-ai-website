@@ -4,6 +4,15 @@ import {requireDb,listJobs} from './store.mjs';
 import {checkRoleHealth} from './cloudflare.mjs';
 import {requireThread} from './manager-threads.mjs';
 
+// Explicit low-cost model selection; no paid-tier or arbitrary model fallback.
+export const MANAGER_FREE_MODELS=Object.freeze(['@cf/meta/llama-3.2-3b-instruct','@cf/meta/llama-3.2-1b-instruct']);
+export function managerModelReadiness(env={}){
+  const model=MANAGER_FREE_MODELS.includes(env.MANAGER_CHAT_MODEL)?env.MANAGER_CHAT_MODEL:null;
+  const bindingConfigured=typeof env.AI?.run==='function';
+  const freePlanConfirmed=env.MANAGER_CHAT_FREE_CONFIRMED==='true';
+  const enabled=env.MANAGER_CHAT_AI_ENABLED==='true'&&freePlanConfirmed&&bindingConfigured&&!!model;
+  return {enabled,bindingConfigured,freePlanConfirmed,model,liveInferenceVerified:false,dailyRequestCap:10,paidFallback:false};
+}
 export function parseMessage(payload) {
   if (!payload || typeof payload!=='object' || Array.isArray(payload) ||
       Object.keys(payload).some(k=>!['synthetic','message','threadId'].includes(k)) || payload.synthetic!==true ||
@@ -56,9 +65,7 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
     reply='Natural-language AI is not connected yet. I have not assigned or executed your instruction. You can use the agent controls for supported staging jobs, or ask "status", "recent jobs" or "check agents". No website is released without independent final-build QA.';
     // Opt-in only. Provider account free-tier confirmation is a separate
     // hosting-side gate. This app cap is not a guarantee of account-wide quota.
-    if(env.MANAGER_CHAT_AI_ENABLED==='true' && env.MANAGER_CHAT_FREE_CONFIRMED==='true' &&
-       env.AI && typeof env.AI.run==='function' && typeof env.MANAGER_CHAT_MODEL==='string' &&
-       /^@cf\/[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(env.MANAGER_CHAT_MODEL)){
+    if(managerModelReadiness(env).enabled){
       const day=new Date().toISOString().slice(0,10);
       const reservation=await db.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET used=used+1 WHERE used<10').bind(day).run();
       if(reservation.meta?.changes===1){
