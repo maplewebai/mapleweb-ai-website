@@ -61,11 +61,11 @@ export function safeModelFailure(error){
  for(const known of ['5035','5028','3040','3036','4001','4002','4003','429','401','403','503'])if(code===known||new RegExp('(?:^|[^0-9])'+known+'(?:[^0-9]|$)').test(message))return 'PROVIDER_'+known;
  return 'PROVIDER_REQUEST_FAILED';
 }
-export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
+export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=null}={}) {
   const message=parseMessage(payload),threadId=payload.threadId??null;
   if(threadId!==null)await requireThread(env,threadId);
   const db=requireDb(env);
-  const intent=classifyMessage(message);
+  const intent=agentRole?'advice':classifyMessage(message);
   let reply,kind='verified-record',aiFailure=null;
   if(intent==='status'){
     reply='The authenticated staging Manager is responding. Its D1 database is available. Live customer operations, publication and payments are disabled. Ask "check agents" for verified role health or "recent jobs" for recorded activity.';
@@ -103,11 +103,11 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
             {role:'assistant',content:String(t.reply).slice(0,1000)}
           ]);
           const result=await env.AI.run(env.MANAGER_CHAT_MODEL,{messages:[
-            {role:'system',content:'You are MapleWeb AI Manager in private staging. Give concise planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
+            {role:'system',content:(agentRole?'You are the MapleWeb AI '+agentRole+' planning assistant, mediated by the Manager. Stay within the selected role. This is shared AI advice, not an independent executing agent. ':'')+'You are MapleWeb AI Manager in private staging. Give concise planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
             ...conversation,{role:'user',content:message}],max_completion_tokens:512,stream:false,store:false,temperature:0.3,chat_template_kwargs:{enable_thinking:false}});
           const output=modelText(result);
           if(!output){aiFailure=result?.choices?.[0]?.finish_reason==='length'?'EMPTY_LENGTH_LIMIT':'EMPTY_MODEL_TEXT';throw Error('No supported model text');}
-          reply='AI planning advice — no job executed:\n'+output.trim().slice(0,2400);
+          reply=(agentRole?agentRole+' — shared AI planning advice':'AI planning advice')+' — no job executed:\n'+output.trim().slice(0,2400);
           kind='ai-advice';
         }catch(error){
           aiFailure=aiFailure||safeModelFailure(error);
