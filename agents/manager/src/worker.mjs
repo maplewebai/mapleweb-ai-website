@@ -45,7 +45,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/control'&&request.method==='GET')return serveControlCenter();
   if(path==='/control')return methodError();
   if(path==='/health'&&request.method==='GET')return json({service:'mapleweb-manager-rebuilt',
-    mode:'staging',deployedWorkerResponding:true,managerReady:!!env.DB&&!!env.MANAGER_OWNER_TOKEN,
+    mode:'staging',buildId:/^[a-f0-9]{40}$/.test(env.HQ_BUILD_ID||'')?env.HQ_BUILD_ID:null,deployedWorkerResponding:true,managerReady:!!env.DB&&!!env.MANAGER_OWNER_TOKEN,
     roleDefinitions:8,roleWorkersVerified:0,publishingEnabled:false,paymentsEnabled:false,
     note:'Staging endpoint health is not proof that eight remote agents are running'});
   if(path==='/health')return methodError();
