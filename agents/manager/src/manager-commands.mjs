@@ -5,6 +5,7 @@ import {ROLES} from './roles.mjs';
 import {assignGitHubDevelopmentTask} from './github.mjs';
 const now=()=>new Date().toISOString();
 const TASKS={
+ 'manager':{action:'coordinate-project',input:{}},
  'website-developer':{action:'build-draft',input:{business:'Fictional Maple sample',description:'Private staging website draft for independent QA.'}},
  'customer-care':{action:'intake',input:{}},
  'sales':{action:'quote',input:{tier:1}},
@@ -22,7 +23,7 @@ export function parseCommand(message){
    validateSynthetic({synthetic:true,instruction});
    return {role:'github',projectId:'MAPLEWEB',action:'create-development-task',input:{instruction}};
  }
- const m=message.trim().match(/^run (website-developer|customer-care|sales|research|quality-checker|support|finance|publishing) for ([a-z0-9_-]{3,30})[.!]?$/i);
+ const m=message.trim().match(/^run (manager|website-developer|customer-care|sales|research|quality-checker|support|finance|publishing) for ([a-z0-9_-]{3,30})[.!]?$/i);
  if(!m)return null;
  const role=m[1].toLowerCase(),projectId=m[2].toUpperCase();
  if(!idIsSafe(projectId))throw bad('Invalid fictional project ID');
@@ -46,7 +47,7 @@ export async function listCommands(env){
  const db=enabled(env);
  const tasks=await db.prepare('SELECT id,role,action,project_id,input_json,state,job_id,result_status,created_at,updated_at FROM manager_commands ORDER BY created_at DESC LIMIT 30').all();
  const roles=await db.prepare('SELECT role,paused FROM manager_role_controls').all();
- return {tasks:(tasks.results||[]).map(({input_json,...task})=>({...task,...(task.role==='github'?{instruction:JSON.parse(input_json).instruction}:{})})),roles:[...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
+ return {tasks:(tasks.results||[]).map(({input_json,...task})=>({...task,...(task.role==='github'?{instruction:JSON.parse(input_json).instruction}:{})})),roles:['manager',...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
 }
 export async function proposeCommand(env,command){
  const db=enabled(env);
@@ -65,7 +66,7 @@ export async function readCommand(env,id){
 }
 export async function setRoleControl(env,role,payload){
  const db=enabled(env);
- if(![...ROLES,'github'].includes(role)||!payload||typeof payload.paused!=='boolean'||Object.keys(payload).length!==1)throw bad('Invalid role control');
+ if(!['manager',...ROLES,'github'].includes(role)||!payload||typeof payload.paused!=='boolean'||Object.keys(payload).length!==1)throw bad('Invalid role control');
  await db.prepare('INSERT INTO manager_role_controls(role,paused,updated_at) VALUES(?,?,?) ON CONFLICT(role) DO UPDATE SET paused=excluded.paused,updated_at=excluded.updated_at').bind(role,payload.paused?1:0,now()).run();
  return {role,paused:payload.paused,scope:'New Manager job dispatch only; already-running jobs are not cancelled'};
 }
@@ -93,6 +94,31 @@ export async function decideCommand(env,id,payload,{dispatch,assignGitHub=assign
      jobId='github-issue-'+result.number;resultStatus='ISSUE_CREATED_NOT_EXECUTION: #'+result.number;state='COMPLETED';
    }catch{/* do not retry an ambiguous issue creation */}
    await db.prepare("UPDATE manager_commands SET state=?,job_id=?,result_status=?,updated_at=? WHERE id=? AND state='RUNNING'").bind(state,jobId,resultStatus,now(),id).run();
+   return {id,state,jobId,resultStatus,websiteReleaseAuthorized:false};
+ }
+ if(item.role==='manager'){
+   if(item.action!=='coordinate-project'||typeof dispatch!=='function')throw bad('Unsupported Manager workflow',503);
+   const order=['customer-care','research','sales','website-developer','quality-checker','support','finance','publishing'];
+   const expected=['DRAFT_ONLY','RESEARCH_PLAN_ONLY','OWNER_REVIEW_REQUIRED','DRAFT_READY_FOR_QA','LOCAL_QA_PASSED','DRAFT_ONLY','SETUP_NOT_CONNECTED','NOT_PUBLISHED'];
+   for(const role of order){await requireRoleRunning(env,role);requireRemoteRole(env,role);}
+   if((await claim('RUNNING')).meta?.changes!==1)throw bad('Task already decided',409);
+   let count=0,jobId=null,state='FAILED_OR_UNCERTAIN',resultStatus='0/8 confirmed';
+   const progress=async()=>db.prepare("UPDATE manager_commands SET state=?,job_id=?,result_status=?,updated_at=? WHERE id=? AND state='RUNNING'").bind(state,jobId,resultStatus,now(),id).run();
+   try{
+     for(let i=0;i<order.length;i++){
+       const role=order[i];
+       await requireRoleRunning(env,'manager');await requireRoleRunning(env,role);requireRemoteRole(env,role);
+       const task=validateSynthetic({synthetic:true,projectId:item.project_id,role,action:TASKS[role].action,input:{...TASKS[role].input}});
+       state='RUNNING';resultStatus=count+'/8 confirmed; dispatching '+role;await progress();
+       const response=await dispatch(new Request('https://manager.internal/api/jobs',{method:'POST',headers:{authorization:'Bearer '+env.MANAGER_OWNER_TOKEN,'content-type':'application/json'},body:JSON.stringify(task)}),env);
+       if(response.status!==201)throw Error('Dispatch not confirmed');
+       const data=await response.json();
+       if(typeof data.jobId!=='string'||data.result?.agent!==role||data.result?.status!==expected[i])throw Error('Unexpected result');
+       count++;jobId=data.jobId;resultStatus=count+'/8 confirmed; '+role+': '+expected[i];await progress();
+     }
+     state='COMPLETED';resultStatus='8/8 staging steps confirmed; publication blocked';
+   }catch{state='FAILED_OR_UNCERTAIN';resultStatus=count+'/8 confirmed; stopped at '+(order[count]||'final verification')+'; no automatic retry';}
+   await progress();
    return {id,state,jobId,resultStatus,websiteReleaseAuthorized:false};
  }
  // No fallback to local deterministic role functions for chat-approved remote jobs.
