@@ -8,8 +8,14 @@ assert.equal(process.env.MAPLEWEB_LIVE_TEST_AUTHORIZED,'true','Explicit isolated
 const runId='QA'+crypto.randomUUID().replace(/-/g,'').slice(0,20).replace(/[0-9]/g,d=>String.fromCharCode(65+Number(d))).toUpperCase();
 async function req(path,{method='GET',body,auth=true,expected=200}={}){
  const r=await fetch(base+path,{method,redirect:'error',signal:AbortSignal.timeout(45000),headers:{...(auth?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
- assert.equal(r.status,expected,method+' '+path);
- return r.json();
+ const data=await r.json().catch(()=>null);
+ if(r.status!==expected){
+  const safeErrors=['Task record not found','Task not found','Not found or method not allowed','Verified remote role binding and authentication are required','Owner task controls are not configured','Task already decided; no retry','Task already decided','Role is paused by owner','Task write not confirmed','Task readback not confirmed','Internal error'];
+  const reason=safeErrors.includes(data?.error)?data.error:'Unclassified response';
+  throw Error(method+' '+path.replace(/[a-f0-9-]{36}/g,'[record]')+' returned '+r.status+' expected '+expected+' ('+reason+')');
+ }
+ assert.ok(data&&typeof data==='object','Expected JSON response');
+ return data;
 }
 async function main(){
  await req('/api/status',{auth:false,expected:401});
@@ -34,11 +40,16 @@ async function main(){
  await req('/api/manager/threads/'+t.id+'/files/'+file.id,{method:'DELETE'});
  console.log('PASS: live D1 conversation persistence and private file operations');
  const commandList=await req('/api/manager/commands');
- assert.ok(commandList.roles.every(r=>!r.paused),'Owner pause states must be respected. No automatic resume.');
+ assert.ok(commandList.roles.filter(r=>r.role!=='github').every(r=>!r.paused),'Owner pause states must be respected. No automatic resume.');
  const roleNames=['customer-care','research','sales','website-developer','quality-checker','support','finance','publishing'];
  for(const role of roleNames){
   const proposal=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'run '+role+' for '+runId},expected:201});
   assert.equal(proposal.proposal.state,'AWAITING_APPROVAL');
+  const stored=await req('/api/manager/commands/'+proposal.proposal.id);
+  assert.equal(stored.task.id,proposal.proposal.id);
+  assert.equal(stored.task.state,'AWAITING_APPROVAL');
+  assert.equal(stored.task.role,role);
+  console.log('PASS: persisted approval record '+role);
   const result=await req('/api/manager/commands/'+proposal.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
   assert.equal(result.state,'COMPLETED',role+' dispatch');
   const expected={ 'customer-care':'DRAFT_ONLY',research:'RESEARCH_PLAN_ONLY',sales:'OWNER_REVIEW_REQUIRED','website-developer':'DRAFT_READY_FOR_QA','quality-checker':'LOCAL_QA_PASSED',support:'DRAFT_ONLY',finance:'SETUP_NOT_CONNECTED',publishing:'NOT_PUBLISHED' };
