@@ -1,0 +1,143 @@
+name: Deploy private MapleWeb Headquarters (staging only)
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/manager/REQUEST_HQ_STAGING_UPDATE.md']
+permissions:
+  contents: read
+concurrency:
+  group: mapleweb-hq-staging-update
+  cancel-in-progress: false
+jobs:
+  update:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact source before using credentials
+        run: |
+          (cd agents/manager && npm test && npm run check && node --check tools/live-owner-acceptance.mjs)
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install chromium
+          node tools/qa/verify-hq-local-browser.mjs
+      - name: Prepare Wrangler
+        working-directory: agents/manager
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Guarded staging update, migrations, and live acceptance
+        working-directory: agents/manager
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_ACCOUNT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+          DB_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
+          MAPLEWEB_STAGING_OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+          FREE_CONFIRMED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }}
+          CI: 'true'
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          umask 077
+          for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID EXPECTED_ACCOUNT DB_ID MAPLEWEB_STAGING_OWNER_TOKEN; do
+            if [ -z "${!key:-}" ]; then echo "::error::Missing $key"; exit 1; fi
+          done
+          test "$FREE_CONFIRMED" = CONFIRMED_FREE_TIER
+          test "$CLOUDFLARE_ACCOUNT_ID" = "$EXPECTED_ACCOUNT"
+          [[ "$DB_ID" =~ ^[a-fA-F0-9-]{36}$ ]]
+          [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[a-fA-F0-9]{32}$ ]]
+          [[ "${#MAPLEWEB_STAGING_OWNER_TOKEN}" -ge 32 ]]
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          script="$api/workers/scripts/mapleweb-manager-v2-staging"
+          base="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          owner="Authorization: Bearer $MAPLEWEB_STAGING_OWNER_TOKEN"
+          get() { curl -fsS --max-time 30 -H "$auth" "$1" -o "$2"; jq -e '.success == true' "$2" >/dev/null; }
+          get "$api" /tmp/hq-account.json
+          jq -e --arg id "$EXPECTED_ACCOUNT" '.result.id == $id' /tmp/hq-account.json >/dev/null
+          get "$api/d1/database/$DB_ID" /tmp/hq-db.json
+          jq -e --arg id "$DB_ID" '.result.uuid == $id and .result.name == "mapleweb-manager-staging-db"' /tmp/hq-db.json >/dev/null
+          get "$script/settings" /tmp/hq-settings.json
+          get "$script/schedules" /tmp/hq-cron-before.json
+          get "$script/deployments" /tmp/hq-deployments.json
+          old=$(jq -er '.result.deployments[0].versions | select(length==1 and .[0].percentage==100) | .[0].version_id' /tmp/hq-deployments.json)
+          [[ "$old" =~ ^[a-fA-F0-9-]{36}$ ]]
+          curl -fsS --max-time 35 -H "$owner" "$base/api/status" -o /tmp/hq-live-before.json
+          jq -e '.mode=="staging" and .storageReady and .publishEnabled==false and .paymentsEnabled==false and .realCustomerInputAllowed==false' /tmp/hq-live-before.json >/dev/null
+          curl -fsS --max-time 40 -H "$owner" "$base/api/integrations/agents-health" -o /tmp/hq-roles-before.json
+          jq -e '.liveRolesVerified==8 and .totalRoles==8' /tmp/hq-roles-before.json >/dev/null
+          # Use only already confirmed free-tier resources. Never subscribe or upgrade.
+          # If the account plan cannot be independently read, deploy with AI disabled.
+          ai_enabled=false
+          if curl -fsS --max-time 20 -H "$auth" "$api/subscriptions" -o /tmp/hq-subscriptions.json && jq -e '.success==true and (.result|type=="array") and ([.result[]|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("workers";"i"))]|length>0) and ([.result[]|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("workers";"i"))|select(((.rate_plan.id // "")+" "+(.rate_plan.public_name // ""))|test("free";"i")|not)]|length==0)' /tmp/hq-subscriptions.json >/dev/null; then
+            ai_enabled=true
+          fi
+          export HQ_AI_ENABLED="$ai_enabled"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import {ROLES} from './src/roles.mjs';
+          const live=JSON.parse(fs.readFileSync('/tmp/hq-settings.json','utf8')).result;
+          const bindings=live.bindings;
+          assert.ok(Array.isArray(bindings));
+          const secrets=['MANAGER_OWNER_TOKEN','ROLE_INTERNAL_TOKEN','AGENT_HEALTH_URLS','AGENT_EXECUTION_URLS'];
+          const variables=['MODE','BUSINESS_CASES_ENABLED','SYNTHETIC_AUTOMATION_ENABLED','MANAGER_COMMANDS_ENABLED','MANAGER_THREADS_ENABLED','MANAGER_STRICT_DELIVERY_ENABLED','MANAGER_CHAT_AI_ENABLED','MANAGER_CHAT_FREE_CONFIRMED','MANAGER_CHAT_MODEL'];
+          const services=ROLES.map(role=>({binding:'ROLE_'+role.toUpperCase().replace(/-/g,'_'),service:'mapleweb-role-'+role+'-staging'}));
+          for(const name of secrets)assert.equal(bindings.find(b=>b.name===name)?.type,'secret_text','Missing required secret '+name);
+          const d1=bindings.find(b=>b.name==='DB');
+          assert.equal(d1?.type,'d1');assert.equal(d1.database_id||d1.id,process.env.DB_ID);
+          for(const s of services){
+            const b=bindings.find(b=>b.name===s.binding);
+            assert.equal(b?.type,'service');assert.equal(b.service,s.service);
+            assert.ok(!b.entrypoint&&!b.environment||b.environment==='production','Unexpected service environment');
+          }
+          for(const b of bindings)assert.ok(
+            (b.type==='secret_text'&&secrets.includes(b.name))||
+            (b.type==='plain_text'&&variables.includes(b.name))||
+            (b.type==='d1'&&b.name==='DB')||
+            (b.type==='service'&&services.some(s=>s.binding===b.name))||
+            (b.type==='ai'&&b.name==='AI'),
+            'Unexpected existing binding '+b.name+' ('+b.type+'); refusing overwrite');
+          const currentVars=Object.fromEntries(bindings.filter(b=>b.type==='plain_text').map(b=>[b.name,b.text]));
+          assert.equal(currentVars.MODE,'staging');
+          const cfg={name:'mapleweb-manager-v2-staging',main:'./src/worker.mjs',
+            compatibility_date:live.compatibility_date||'2026-11-01',compatibility_flags:live.compatibility_flags||[],
+            workers_dev:true,keep_vars:true,
+            vars:{...currentVars,MODE:'staging',BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',MANAGER_CHAT_AI_ENABLED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_FREE_CONFIRMED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_MODEL:'@cf/meta/llama-3.2-3b-instruct'},
+            d1_databases:[{binding:'DB',database_name:'mapleweb-manager-staging-db',database_id:process.env.DB_ID,migrations_dir:'./migrations'}],
+            services,secrets:{required:secrets},ai:{binding:'AI'}
+          };
+          // Only version upload/deploy; no trigger/route changes.
+          assert.ok(!cfg.routes&&!cfg.route&&!cfg.triggers);
+          fs.writeFileSync('.hq-staging.jsonc',JSON.stringify(cfg,null,2),{mode:0o600});
+          NODE
+          npx wrangler versions upload --dry-run --config .hq-staging.jsonc
+          npx wrangler d1 migrations apply mapleweb-manager-staging-db --remote --config .hq-staging.jsonc
+          tag="hq-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          npx wrangler versions upload --tag "$tag" --config .hq-staging.jsonc
+          npx wrangler versions deploy --version-tag "$tag@100%" --yes --config .hq-staging.jsonc
+          rollback() {
+            echo "::error::Live acceptance failed; restore previous staging version only."
+            npx wrangler versions deploy "$old@100%" --yes --config .hq-staging.jsonc
+          }
+          export MAPLEWEB_LIVE_TEST_AUTHORIZED=true
+          export MAPLEWEB_AI_TEST_AUTHORIZED="$ai_enabled"
+          rc=0
+          node tools/live-owner-acceptance.mjs || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then rollback; exit 1; fi
+          get "$script/schedules" /tmp/hq-cron-after.json
+          if ! diff <(jq -S '.result.schedules|map(.cron)|sort' /tmp/hq-cron-before.json) <(jq -S '.result.schedules|map(.cron)|sort' /tmp/hq-cron-after.json); then rollback; exit 1; fi
+          if [ "$rc" = 2 ]; then
+            echo "Staging deployment and remote tasks passed. AI inference NOT verified; account free-plan check not confirmed." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Staging API acceptance passed, including model response. Final real-phone QA and production business operations remain separate." >> "$GITHUB_STEP_SUMMARY"
+      - name: Scope
+        if: always()
+        run: echo "Only existing isolated staging Manager; no changes to main, public website, plan, subscriptions, customer publication, payments or calling." >> "$GITHUB_STEP_SUMMARY"
