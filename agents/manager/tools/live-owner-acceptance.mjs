@@ -107,7 +107,7 @@ async function main(){
  console.log('PASS: exact deployed full-screen Manager HTML');
  await req('/api/manager/quota',{auth:false,expected:401});
  const quota=await req('/api/manager/quota');
- assert.equal(quota.cap,10);assert.equal(quota.remaining,10-quota.used);assert.equal(quota.exhausted,quota.remaining===0);
+ assert.equal(quota.cap,null);assert.equal(quota.remaining,null);assert.equal(quota.providerFreeNeuronLimit,10000);assert.ok(Number.isSafeInteger(quota.used));
  const badCommand=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'run manager for I want you to finish and test'},expected:201});
  assert.equal(badCommand.kind,'verified-record');assert.equal(badCommand.jobExecuted,false);assert.match(badCommand.reply,/No task was created/);
  const natural=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Please create a fictional bakery website and test it'},expected:201});
@@ -120,14 +120,21 @@ async function main(){
  const afterNaturalQuota=await req('/api/manager/quota');
  if(afterNaturalQuota.day===quota.day)assert.equal(afterNaturalQuota.used,quota.used,'Natural task must not spend AI quota');
  console.log('PASS: ordinary English task request, owner-approved remote execution, saved chat reference and unchanged AI quota');
+ const blocked=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Make the 4 website and test them and publish and also give all 4 website link'},expected:201});
+ assert.equal(blocked.kind,'verified-record');assert.equal(blocked.jobExecuted,false);assert.equal(blocked.proposal,undefined);assert.match(blocked.reply,/Publication and website links are blocked/);
+ const batch=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Create four new fictional websites and test them'},expected:201});
+ assert.equal(batch.proposal.action,'coordinate-four-samples');assert.equal(batch.proposal.state,'AWAITING_APPROVAL');assert.equal(batch.jobExecuted,false);
+ const batchResult=await req('/api/manager/commands/'+batch.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
+ assert.equal(batchResult.state,'COMPLETED');assert.match(batchResult.resultStatus,/4\/4 basic drafts structurally checked/);assert.equal(batchResult.websiteReleaseAuthorized,false);
+ console.log('PASS: four fictional draft workflow, structural checks, and blocked publication');
  const model=await req('/api/manager/model');
- assert.equal(model.paidFallback,false);
+ assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
   assert.equal(model.enabled,true,'Free-model binding not enabled');
   const ai=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Suggest three improvements for a fictional bakery website.'},expected:201});
-  if(ai.kind==='unavailable'&&ai.aiFailure==='DAILY_ALLOWANCE_EXHAUSTED'){
+  if(ai.kind==='unavailable'&&ai.aiFailure==='PROVIDER_3036'){
    const after=await req('/api/manager/quota');
-   assert.equal(after.exhausted,true);assert.equal(after.used,after.cap);assert.equal(ai.jobExecuted,false);assert.match(ai.reply,/daily AI allowance is exhausted/);
+   assert.equal(after.cap,null);assert.equal(ai.jobExecuted,false);assert.match(ai.reply,/free AI compute allowance is exhausted/);
    console.log('PASS: real quota exhaustion handled safely; verified task controls remain operational. Fresh model inference NOT verified in this release.');
    process.exitCode=3;
   }else{
