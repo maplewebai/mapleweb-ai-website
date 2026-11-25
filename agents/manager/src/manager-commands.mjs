@@ -29,6 +29,43 @@ export function parseCommand(message){
  if(!idIsSafe(projectId))throw bad('Invalid fictional project ID');
  return {role,projectId,action:TASKS[role].action,input:{...TASKS[role].input}};
 }
+// Conservative natural-language routing. Only allow-listed, synthetic actions;
+// never let model text, an ambiguous request, or a negated instruction dispatch work.
+export function interpretOwnerTask(message,{newId=()=> 'CASE-'+crypto.randomUUID().replace(/-/g,'').slice(0,12).toUpperCase()}={}) {
+ const raw=message.trim().replace(/[.!]+$/,'').trim();
+ if(!raw||raw.length>800||/[?\n\r;]|\b(?:don't|do not|never|not|without|instead|if|unless|pretend|example|how|explain|why|what)\b/i.test(raw))return null;
+ const text=raw.replace(/^(?:(?:hey|hi) manager[, :]+|manager[, :]+|please\s+|can you\s+|could you\s+|i want you to\s+|i need you to\s+)+/i,'').trim();
+ // These verbs are outside the staging authorization even if a supported action is also mentioned.
+ if(/\b(?:publish|deploy|release|send|email|call|contact|charge|pay|purchase|delete|refund|suspend|real customer|live website|github)\b/i.test(text))return null;
+ const project=text.match(/\s+(?:for|on)\s+project\s+([a-z0-9_-]{3,30})$/i);
+ const body=project?text.slice(0,project.index):text;
+ const projectId=project?project[1].toUpperCase():null;
+ const proposal=(role,id,input={},scope)=>({command:{role,projectId:id,action:TASKS[role].action,input:{...TASKS[role].input,...input}},scope});
+ // Fictional website request: limited to one private draft or the eight-step staging workflow.
+ const site=body.match(/^(?:build|create|make|design)(?: me)? (?:a|one) (?:private |staging )?(?:website|site) for (?:a |an )?fictional ([a-z][a-z0-9 -]{1,65}?)(?: (?:and|then) (?:test|check|review) (?:it|the website))?$/i);
+ const site2=body.match(/^(?:build|create|make|design)(?: me)? (?:a|one) fictional ([a-z][a-z0-9 -]{1,65}?) (?:website|site)(?: (?:and|then) (?:test|check|review)(?: it)?)?$/i);
+ const matched=site||site2;
+ if(matched){
+   const sector=matched[1].trim();
+   const business='Fictional '+sector;
+   const description='Private staging website draft for '+business+'.';
+   const testing=/\b(?:and|then) (?:test|check|review)\b/i.test(body);
+   return proposal(testing?'manager':'website-developer',projectId||newId(),{business,description},testing?'Coordinate all eight staging steps for '+business+', including draft creation and structural QA. Not full browser or release QA.':'Create one basic private staging draft for '+business+'. No publication.');
+ }
+ if(/^(?:(?:coordinate|run) (?:all eight|all 8|all)(?: staging)? agents|run (?:the )?(?:full|eight-agent|8-agent) staging (?:workflow|check|test)|finish and test (?:the )?staging project)$/i.test(body)){
+   return projectId?proposal('manager',projectId,{},'Coordinate eight supported staging steps. Not a final website release test.'):{reply:'Which fictional project should I coordinate? Say “Run all agents for project CASE001” or “Create a fictional bakery website and test it” for a new draft.'};
+ }
+ if(/^(?:test|check|review|run quality checks on) (?:the )?(?:website|site|draft)$/i.test(body)){
+   return projectId?proposal('quality-checker',projectId,{},'Run structural checks on the saved private draft. This is not full browser or release QA.'):{reply:'Which saved fictional project should I check? Say “Test the website for project CASE001”.'};
+ }
+ const quote=body.match(/^(?:prepare|create|make|draft) (?:a )?(?:price )?quote(?: (?:for |at )?tier ([1-6]))?$/i);
+ if(quote)return proposal('sales',projectId||newId(),{tier:Number(quote[1]||1)},'Prepare an internal CAD tier '+(quote[1]||'1')+' quote range. No invoice or payment.');
+ const research=body.match(/^(?:research|prepare a research plan for|make a research plan for) (?:a |an )?fictional ([a-z][a-z0-9 -]{1,65})$/i);
+ if(research)return proposal('research',projectId||newId(),{sector:'fictional '+research[1]},'Prepare a research plan for a fictional '+research[1]+'. No external research or outreach.');
+ if(/^(?:check|review) (?:the )?(?:payment setup|finance setup|payment connection)$/i.test(body))return proposal('finance',projectId||newId(),{},'Check staging payment setup; no transaction.');
+ if(/^(?:finish and test|finish and test it|finish everything|complete everything|finish the work|finish and test all websites)$/i.test(body))return {reply:'Which fictional project should I finish and test? I can coordinate a supported staging workflow for one named project. I cannot complete unspecified work or certify website release.'};
+ return null;
+}
 function enabled(env){if(env.MANAGER_COMMANDS_ENABLED!=='true')throw bad('Owner task controls are not configured',503);return requireDb(env);}
 export async function requireRoleRunning(env,role){
  if(env.MANAGER_COMMANDS_ENABLED!=='true')return;
@@ -47,7 +84,7 @@ export async function listCommands(env){
  const db=enabled(env);
  const tasks=await db.prepare('SELECT id,role,action,project_id,input_json,state,job_id,result_status,created_at,updated_at FROM manager_commands ORDER BY created_at DESC LIMIT 30').all();
  const roles=await db.prepare('SELECT role,paused FROM manager_role_controls').all();
- return {tasks:(tasks.results||[]).map(({input_json,...task})=>({...task,...(task.role==='github'?{instruction:JSON.parse(input_json).instruction}:{})})),roles:['manager',...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
+ return {tasks:(tasks.results||[]).map(({input_json,...task})=>({...task,...(task.role==='github'?{instruction:JSON.parse(input_json).instruction}:['manager','website-developer','research','sales'].includes(task.role)?{detail:((i)=>i.description||i.sector||(i.tier?'Tier '+i.tier:null))(JSON.parse(input_json))}:{})})),roles:['manager',...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
 }
 export async function proposeCommand(env,command){
  const db=enabled(env);
@@ -108,7 +145,9 @@ export async function decideCommand(env,id,payload,{dispatch,assignGitHub=assign
      for(let i=0;i<order.length;i++){
        const role=order[i];
        await requireRoleRunning(env,'manager');await requireRoleRunning(env,role);requireRemoteRole(env,role);
-       const task=validateSynthetic({synthetic:true,projectId:item.project_id,role,action:TASKS[role].action,input:{...TASKS[role].input}});
+       const requested=JSON.parse(item.input_json);
+       const custom=role==='website-developer'&&typeof requested.business==='string'&&typeof requested.description==='string'?{business:requested.business,description:requested.description}:{};
+       const task=validateSynthetic({synthetic:true,projectId:item.project_id,role,action:TASKS[role].action,input:{...TASKS[role].input,...custom}});
        state='RUNNING';resultStatus=count+'/8 confirmed; dispatching '+role;await progress();
        const response=await dispatch(new Request('https://manager.internal/api/jobs',{method:'POST',headers:{authorization:'Bearer '+env.MANAGER_OWNER_TOKEN,'content-type':'application/json'},body:JSON.stringify(task)}),env);
        if(response.status!==201)throw Error('Dispatch not confirmed');
