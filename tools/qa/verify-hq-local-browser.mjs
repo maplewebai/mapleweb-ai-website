@@ -57,11 +57,14 @@ try{
     await page.locator('#secret').fill(token);
     await click('#connect');
     await visible('#manager');
+    await visible('#manager .composer');
     await text('#chatStatus','Private history loaded');
     await text('#threadStatus','Private conversations available');
     await page.locator('#chatMessage').fill('status');
     await click('#chatSend');
     await text('#chatTurns','authenticated staging Manager is responding');
+    await visible('#chatTurns .userMessage');
+    await visible('#chatTurns .assistantBody');
     await text('#chatStatus','Response recorded');
     // GitHub task controls must not claim live execution without credentials.
     await click('[data-chat="github status"]');
@@ -103,10 +106,19 @@ try{
     await click('[data-tab="agents"]');
     await page.locator('#agentGrid .agent').filter({hasText:'Website Developer'}).click();
     await visible('#agentWorkspace');
+    assert.equal(await page.locator('#agents').evaluate(el=>el.classList.contains('active')),true);
+    assert.equal(await page.locator('[data-tab="agents"]').evaluate(el=>el.classList.contains('active')),true);
+    assert.equal(await page.locator('#agentWorkspace').evaluate(el=>el.closest('#agents')!==null),true);
+    if(width<1100)assert.equal(await page.locator('#agentDirectory').isVisible(),false);
+    else assert.equal(await page.locator('#agentDirectory').isVisible(),true);
+    await visible('#agentConversation .composer');
+
     await text('#workspaceName','Website Developer');
     await text('#workspaceStatus','Records checked');
     await click('#agentAskStatus');
     await text('#agentTurns','Verified website-developer records');
+    await visible('#agentTurns .userMessage');
+    await visible('#agentTurns .assistantBody');
     await click('[data-agent-pane="agentAssignPane"]');
     await page.locator('#agentProject').fill('AGENTQA');
     await page.locator('#agentDetail').fill('Fictional bookstore with a reading area');
@@ -133,6 +145,7 @@ try{
     assert.ok(workspaceLayout.scroll<=workspaceLayout.width+1,'Workspace layout overflow '+JSON.stringify(workspaceLayout));
     await click('[data-tab="manager"]');
 
+    assert.equal(await page.locator('#agents').isVisible(),false);
     page.once('dialog',d=>d.accept('Local QA conversation'));
     await click('#newThread');
     await visible('#threadAttachments');
