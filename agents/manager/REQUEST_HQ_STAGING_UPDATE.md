@@ -23,3 +23,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Validate and deploy improved Manager and agent chat: immediate pending messages, safe formatted responses, copy controls, auto-sizing composer, expandable history and improved conversation prompts. Preserve shared free-model quota and staging-only approvals. Require browser and live acceptance before retaining deployment.
 
 - 2026-11-25: Validate and deploy dedicated full-screen Manager chat, fixed-in-viewport composer, minimal header, mobile navigation drawer, new chat, and separate task controls. Verify mobile/desktop navigation and existing remote acceptance; retain free-model quota and rollback safeguards.
+
+- 2026-11-25: Retest and deploy the full-screen Manager interface with authenticated quota checks and accurate invalid-task guidance. Confirm exact live HTML, all remote task controls, and safe handling of the exhausted allowance; do not reset quota or enable paid AI. Retain rollback for real failures.
