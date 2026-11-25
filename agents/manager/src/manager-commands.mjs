@@ -1,6 +1,6 @@
 // Owner-confirmed staging commands. No model-generated tool calls or publication.
 import {bad,validateSynthetic,idIsSafe} from './security.mjs';
-import {requireDb} from './store.mjs';
+import {requireDb,project} from './store.mjs';
 import {ROLES} from './roles.mjs';
 import {assignGitHubDevelopmentTask} from './github.mjs';
 const now=()=>new Date().toISOString();
@@ -85,6 +85,26 @@ export function interpretOwnerTask(message,{newId=()=> 'CASE-'+crypto.randomUUID
  if(/^(?:check|review) (?:the )?(?:payment setup|finance setup|payment connection)$/i.test(body))return proposal('finance',projectId||newId(),{},'Check staging payment setup; no transaction.');
  if(/^(?:finish and test|finish and test it|finish everything|complete everything|finish the work|finish and test all websites)$/i.test(body))return {reply:'Which fictional project should I finish and test? I can coordinate a supported staging workflow for one named project. I cannot complete unspecified work or certify website release.'};
  return null;
+}
+// Named existing projects must resolve against private stored records, never
+// against the AI's guesses. Checking a draft does not replace or release it.
+export async function resolveProjectRequest(env,message){
+ const text=message.trim().replace(/[.!?]+$/,'').replace(/^(?:(?:manager[, :]+|please\s+|can you\s+|could you\s+|i want you to\s+|i need you to\s+))+/i,'').trim();
+ if(/[\n\r;]|\b(?:don't|do not|never|not|without|instead|if|unless|pretend|example|delete|charge|pay|contact|email|send|call)\b/i.test(text))return null;
+ const status=text.match(/^(?:what is the status of|how is|show (?:me )?the status of|check the status of|give me (?:an |a )?update on|status of)\s+(?:the )?(?:project )?([a-z0-9_-]{3,30})(?: (?:project|website|site))?$/i)
+  ||text.match(/^(?:check|show me) (?:the )?([a-z0-9_-]{3,30}) (?:project|website|site) status$/i);
+ const test=text.match(/^(?:(?:finish|complete) and (?:test|check)|test|review|run quality checks on)\s+(?:the )?(?:project )?([a-z0-9_-]{3,30}) (?:project|website|site|draft)(?: and (?:publish|deploy)(?: it)?(?: and (?:give|show) me (?:the |its )?link)?)?$/i)
+  ||text.match(/^(?:test|review|finish and test|complete and test) (?:the )?project ([a-z0-9_-]{3,30})$/i)
+  ||text.match(/^(?:test|check|review) (?:the )?(?:website|site|draft) for project ([a-z0-9_-]{3,30})$/i);
+ const publish=text.match(/^(?:publish|deploy|release) (?:the )?(?:project )?([a-z0-9_-]{3,30}) (?:project|website|site|draft)$/i);
+ if(!status&&!test&&!publish)return null;
+ const id=(status||test||publish)[1].toUpperCase();
+ if(['THE','ALL','NEW','SAVED','FICTIONAL','STAGING','CUSTOMER'].includes(id))return null;
+ const saved=await project(requireDb(env),id);
+ if(!saved||!saved.version)return {reply:'I could not find a saved website draft with project ID '+id+'. No job was started. Please use its exact saved project ID. A project outside this Manager is not automatically connected.'};
+ const overview='Saved project '+id+' — draft version '+saved.version+'. Structural QA: '+(saved.qa_passed===1?'passed':'not passed or not run')+'. Revision open: '+(saved.revision_open===1?'yes':'no')+'. Full independent QA and publication are not verified.';
+ if(status||publish)return {reply:overview+(publish?' Publishing and links are blocked. No job was started.':'')};
+ return {command:{role:'quality-checker',projectId:id,action:'review',input:{}},scope:overview+' Run structural QA on the existing saved draft only. No rebuild, revisions, full browser test or publication. Approve to start.'};
 }
 function enabled(env){if(env.MANAGER_COMMANDS_ENABLED!=='true')throw bad('Owner task controls are not configured',503);return requireDb(env);}
 export async function requireRoleRunning(env,role){
