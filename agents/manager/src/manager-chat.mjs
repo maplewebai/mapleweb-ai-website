@@ -49,9 +49,16 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
       const reservation=await db.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET used=used+1 WHERE used<10').bind(day).run();
       if(reservation.meta?.changes===1){
         try{
+          // Only the last three advice exchanges are sent, each bounded. Stored
+          // status/command records are never supplied as model instructions.
+          const prior=await db.prepare("SELECT message,reply FROM manager_chat WHERE kind='ai-advice' ORDER BY id DESC LIMIT 3").all();
+          const conversation=(prior.results||[]).reverse().flatMap(t=>[
+            {role:'user',content:String(t.message).slice(0,800)},
+            {role:'assistant',content:String(t.reply).slice(0,1000)}
+          ]);
           const result=await env.AI.run(env.MANAGER_CHAT_MODEL,{messages:[
             {role:'system',content:'You are MapleWeb AI Manager in private staging. Give concise planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
-            {role:'user',content:message}],max_tokens:384});
+            ...conversation,{role:'user',content:message}],max_tokens:384});
           if(typeof result?.response!=='string'||!result.response.trim())throw Error('No supported model text');
           reply='AI planning advice — no job executed:\n'+result.response.trim().slice(0,2400);
           kind='ai-advice';
