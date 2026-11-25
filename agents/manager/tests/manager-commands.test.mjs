@@ -70,6 +70,18 @@ test('authenticated chat command creates task; no unauthenticated access',async 
  assert.equal(res.status,201);assert.equal((await res.json()).proposal.state,'AWAITING_APPROVAL');
  assert.equal((await worker.fetch(req('/api/manager/commands','GET',null,false),env)).status,401);
  assert.equal((await listCommands(env)).tasks.length,1);
+ const listed=(await listCommands(env)).tasks[0];
+ const path='/api/manager/commands/'+listed.id;
+ assert.equal((await worker.fetch(req(path,'GET',null,false),env)).status,401);
+ const readback=await worker.fetch(req(path,'GET'),env);
+ assert.equal(readback.status,200);
+ assert.equal((await readback.json()).task.id,listed.id);
+ assert.equal((await worker.fetch(req('/api/manager/commands/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','GET'),env)).status,404);
+ const denied=await worker.fetch(req(path+'/decision','POST',{decision:'reject'},false),env);
+ assert.equal(denied.status,401);
+ const rejected=await worker.fetch(req(path+'/decision','POST',{decision:'reject'}),env);
+ assert.equal(rejected.status,200);
+ assert.equal((await rejected.json()).state,'REJECTED');
 });
 
 test('GitHub issue task requires approval and credentials, records assignment only',async t=>{
