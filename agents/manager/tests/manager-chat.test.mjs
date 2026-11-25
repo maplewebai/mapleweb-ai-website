@@ -48,7 +48,7 @@ test('agent report uses actual health response, not assumed active agents',async
  assert.match(turn.reply,/1 of 8/);
  assert.match(turn.reply,/sales: not verified/);
 });
-test('AI opt-in and atomic daily cap, no automatic actions',async t=>{
+test('AI opt-in and usage accounting beyond ten messages, no automatic actions',async t=>{
  const {env,sql}=setup(t);let calls=0;
  env.AI={run:async()=>{calls++;return {choices:[{message:{content:'Planning only.'}}]}}};
  env.MANAGER_CHAT_MODEL='@cf/google/gemma-4-26b-a4b-it';
@@ -58,8 +58,8 @@ test('AI opt-in and atomic daily cap, no automatic actions',async t=>{
  assert.equal(calls,0);
  env.MANAGER_CHAT_FREE_CONFIRMED='true';
  for(let i=0;i<10;i++)assert.equal((await managerChat(env,input)).kind,'ai-advice');
- assert.match((await managerChat(env,input)).reply,/allowance/);
- assert.equal(calls,10);
+ assert.equal((await managerChat(env,input)).kind,'ai-advice');
+ assert.equal(calls,11);
  assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM jobs').get().n,0);
  assert.equal((await chatHistory(env)).turns.length,12);
 });
@@ -84,23 +84,23 @@ test('model text adapters never expose hidden reasoning',()=>{
  assert.equal(safeModelFailure(new Error('private data only')),'PROVIDER_REQUEST_FAILED');
 });
 
-test('verified daily quota is read-only, invalid project instructions do not spend AI requests',async t=>{
+test('usage counter is read-only, invalid instructions use no AI and provider exhaustion is reported',async t=>{
  const {env,sql}=setup(t);let calls=0;
- env.AI={run:async()=>{calls++;return {response:'Planning advice.'}}};
+ env.AI={run:async()=>{calls++;throw Object.assign(new Error('Provider free allocation exhausted'),{code:3036})}};
  env.MANAGER_CHAT_MODEL='@cf/google/gemma-4-26b-a4b-it';
  env.MANAGER_CHAT_AI_ENABLED='true';env.MANAGER_CHAT_FREE_CONFIRMED='true';
  const day=new Date().toISOString().slice(0,10);
  sql.prepare('INSERT INTO manager_chat_quota(day,used) VALUES(?,10)').run(day);
  const quota=await managerQuota(env);
- assert.equal(quota.used,10);assert.equal(quota.remaining,0);assert.equal(quota.exhausted,true);
+ assert.equal(quota.used,10);assert.equal(quota.cap,null);assert.equal(quota.remaining,null);
  const denied=await worker.fetch(new Request('https://staging.test/api/manager/quota'),env);
  assert.equal(denied.status,401);
  const allowed=await worker.fetch(new Request('https://staging.test/api/manager/quota',{headers:{authorization:'Bearer '+TOKEN}}),env);
- assert.equal(allowed.status,200);assert.equal((await allowed.json()).exhausted,true);
+ assert.equal(allowed.status,200);assert.equal((await allowed.json()).used,10);
  const invalid=await managerChat(env,{synthetic:true,message:'run manager for I want you to finish and test'});
  assert.equal(invalid.kind,'verified-record');assert.match(invalid.reply,/No task was created/);
  const advice=await managerChat(env,{synthetic:true,message:'Suggest a fictional bakery layout'});
- assert.equal(advice.kind,'unavailable');assert.equal(advice.aiFailure,'DAILY_ALLOWANCE_EXHAUSTED');
- assert.equal(calls,0);assert.equal((await managerQuota(env)).used,10);
+ assert.equal(advice.kind,'unavailable');assert.equal(advice.aiFailure,'PROVIDER_3036');
+ assert.equal(calls,1);assert.equal((await managerQuota(env)).used,11);
  assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM jobs').get().n,0);
 });
