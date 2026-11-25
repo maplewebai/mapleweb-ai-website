@@ -186,3 +186,23 @@ test('ordinary English chat creates a saved approval without AI or execution',as
  const history=await worker.fetch(new Request('https://staging.test/api/manager/chat',{headers:{authorization:'Bearer '+token}}),env);
  assert.equal((await history.json()).turns[0].reply,turn.reply);
 });
+
+test('four new sample drafts require approval and never publish',async t=>{
+ const env=setup(t);
+ const blocked=interpretOwnerTask('Make the 4 website and test them and publish and also give all 4 website link');
+ assert.match(blocked.reply,/Publication and website links are blocked/);assert.equal(blocked.command,undefined);
+ const parsed=interpretOwnerTask('Create four new fictional websites and test them',{newId:()=> 'CASE-BATCH'});
+ assert.equal(parsed.command.action,'coordinate-four-samples');
+ const task=await proposeCommand(env,parsed.command);
+ env.AGENT_EXECUTION_URLS='{}';env.ROLE_INTERNAL_TOKEN='x'.repeat(32);
+ for(const role of ['website-developer','quality-checker'])env['ROLE_'+role.toUpperCase().replace(/-/g,'_')]={fetch(){}};
+ const jobs=[];
+ const result=await decideCommand(env,task.id,{decision:'approve'},{dispatch:async req=>{
+   const body=await req.json();jobs.push(body);
+   return new Response(JSON.stringify({jobId:'job-'+jobs.length,result:{agent:body.role,status:body.role==='website-developer'?'DRAFT_READY_FOR_QA':'LOCAL_QA_PASSED'}}),{status:201});
+ }});
+ assert.equal(jobs.length,8);assert.equal(new Set(jobs.map(x=>x.projectId)).size,4);
+ assert.equal(result.state,'COMPLETED');assert.match(result.resultStatus,/4\/4 basic drafts structurally checked/);
+ assert.equal(result.websiteReleaseAuthorized,false);
+ await assert.rejects(decideCommand(env,task.id,{decision:'approve'}),/already decided/);
+});
