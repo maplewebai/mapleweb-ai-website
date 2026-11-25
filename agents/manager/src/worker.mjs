@@ -24,6 +24,7 @@ import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from './website-delivery-policy.mjs';
 import {serveControlCenter} from './control-center.mjs';
+import {managerChat,chatHistory} from './manager-chat.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -49,6 +50,9 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env));
+  if(path==='/api/manager/chat'&&request.method==='POST')return json(await managerChat(env,await readJson(request,3800)),201);
+  if(path==='/api/manager/chat')return methodError();
   if(path==='/api/automation/status'&&request.method==='GET')
     return json({mode:'staging',syntheticOnly:true,enabled:env.SYNTHETIC_AUTOMATION_ENABLED==='true',
       cronUTC:'0 14 * * *',roles:8,customerContactEnabled:false,
