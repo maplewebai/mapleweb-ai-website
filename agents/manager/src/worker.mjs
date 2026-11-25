@@ -23,6 +23,7 @@ import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-
 import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,ownerJobResult} from './website-delivery-policy.mjs';
+import {agentWorkspace,agentMessage,agentTask} from './agent-workspace.mjs';
 import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness} from './manager-chat.mjs';
@@ -54,6 +55,14 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  const agentPath=path.match(/^\/api\/agents\/([a-z-]+)\/(workspace|chat|tasks)$/);
+  if(agentPath){
+    const [,role,operation]=agentPath;
+    if(operation==='workspace'&&request.method==='GET')return json(await agentWorkspace(env,role));
+    if(operation==='chat'&&request.method==='POST')return json(await agentMessage(env,role,await readJson(request,3800)),201);
+    if(operation==='tasks'&&request.method==='POST')return json(await agentTask(env,role,await readJson(request,2400)),201);
+    return methodError();
+  }
   if(path==='/api/manager/model'&&request.method==='GET')return json(managerModelReadiness(env));
   if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env,u.searchParams.get('threadId')));
   if(path==='/api/manager/chat'&&request.method==='POST'){
