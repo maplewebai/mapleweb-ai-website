@@ -15,6 +15,13 @@ const TASKS={
  'finance':{action:'status',input:{}},
  'publishing':{action:'readiness',input:{}}
 };
+// Fixed fictional examples, not finished tier-quality website packages.
+const SAMPLE_SITES=Object.freeze([
+ {business:'Fictional Maple Bakery',description:'Simple-tier concept: bakery landing page.'},
+ {business:'Fictional Cedar Studio',description:'Professional-tier concept: interior design studio landing page.'},
+ {business:'Fictional Northline Fitness',description:'Advanced-tier concept: fitness studio landing page.'},
+ {business:'Fictional Aurora Consulting',description:'CAD 7000 package concept: consulting business landing page.'}
+]);
 export function parseCommand(message){
  const github=message.trim().match(/^github task: (.{10,500})$/i);
  if(github){
@@ -35,6 +42,19 @@ export function interpretOwnerTask(message,{newId=()=> 'CASE-'+crypto.randomUUID
  const raw=message.trim().replace(/[.!]+$/,'').trim();
  if(!raw||raw.length>800||/[?\n\r;]|\b(?:don't|do not|never|not|without|instead|if|unless|pretend|example|how|explain|why|what)\b/i.test(raw))return null;
  const text=raw.replace(/^(?:(?:hey|hi) manager[, :]+|manager[, :]+|please\s+|can you\s+|could you\s+|i want you to\s+|i need you to\s+)+/i,'').trim();
+ // Recognize the four-site request without consuming AI quota. Never infer
+ // which existing projects the owner meant, or silently replace them.
+ if(/^(?:build|create|make|design)(?: me)? (?:the )?(?:4|four) (?:new )?(?:(?:fictional|sample|staging) )?(?:websites?|sites?)\b/i.test(text)){
+   if(/\b(?:publish|deploy|release|links?|send|email|call|contact|charge|pay|purchase|delete|refund|suspend|real customer|live website|github)\b/i.test(text)){
+     return {reply:'I understand you want four websites, testing and links. Publication and website links are blocked until independent full browser and exact-build QA are available. No work was started. To prepare four NEW fictional basic drafts and structural checks, say “Create four new fictional websites and test them”. For existing websites, tell me their project IDs.'};
+   }
+   if(/^(?:build|create|make|design)(?: me)? (?:4|four) new fictional (?:websites|sites)(?: and (?:test|check) them)?$/i.test(text)){
+     const id=newId();
+     if(!idIsSafe(id)||id.length>27)throw bad('Invalid batch ID');
+     return {command:{role:'manager',projectId:id,action:'coordinate-four-samples',input:{}},scope:'Create four NEW basic fictional landing-page drafts: bakery (simple concept), interior design (professional concept), fitness (advanced concept), consulting (CAD 7000 concept). Run structural checks on each. These are not finished tier-quality websites or independent browser QA. No publication or links.'};
+   }
+   return {reply:'Do you mean four existing websites or four new fictional drafts? For new drafts, say “Create four new fictional websites and test them”. For existing websites, provide their project IDs. No work was started.'};
+ }
  // These verbs are outside the staging authorization even if a supported action is also mentioned.
  if(/\b(?:publish|deploy|release|send|email|call|contact|charge|pay|purchase|delete|refund|suspend|real customer|live website|github)\b/i.test(text))return null;
  const project=text.match(/\s+(?:for|on)\s+project\s+([a-z0-9_-]{3,30})$/i);
@@ -131,6 +151,34 @@ export async function decideCommand(env,id,payload,{dispatch,assignGitHub=assign
      jobId='github-issue-'+result.number;resultStatus='ISSUE_CREATED_NOT_EXECUTION: #'+result.number;state='COMPLETED';
    }catch{/* do not retry an ambiguous issue creation */}
    await db.prepare("UPDATE manager_commands SET state=?,job_id=?,result_status=?,updated_at=? WHERE id=? AND state='RUNNING'").bind(state,jobId,resultStatus,now(),id).run();
+   return {id,state,jobId,resultStatus,websiteReleaseAuthorized:false};
+ }
+ if(item.role==='manager'&&item.action==='coordinate-four-samples'){
+   if(typeof dispatch!=='function')throw bad('Manager dispatch unavailable',503);
+   if(!idIsSafe(item.project_id)||item.project_id.length>27)throw bad('Invalid batch ID');
+   for(const role of ['website-developer','quality-checker']){await requireRoleRunning(env,role);requireRemoteRole(env,role);}
+   if((await claim('RUNNING')).meta?.changes!==1)throw bad('Task already decided',409);
+   let count=0,jobId=null,state='RUNNING',resultStatus='0/4 drafts structurally checked';
+   const progress=()=>db.prepare("UPDATE manager_commands SET state=?,job_id=?,result_status=?,updated_at=? WHERE id=? AND state='RUNNING'").bind(state,jobId,resultStatus,now(),id).run();
+   try{
+     for(let i=0;i<SAMPLE_SITES.length;i++){
+       const projectId=item.project_id+'-'+(i+1);
+       for(const role of ['website-developer','quality-checker']){
+         await requireRoleRunning(env,'manager');await requireRoleRunning(env,role);requireRemoteRole(env,role);
+         const task=validateSynthetic({synthetic:true,projectId,role,action:TASKS[role].action,input:role==='website-developer'?{...SAMPLE_SITES[i]}:{}});
+         resultStatus=count+'/4 drafts structurally checked; '+projectId+' / '+role;await progress();
+         const response=await dispatch(new Request('https://manager.internal/api/jobs',{method:'POST',headers:{authorization:'Bearer '+env.MANAGER_OWNER_TOKEN,'content-type':'application/json'},body:JSON.stringify(task)}),env);
+         if(response.status!==201)throw Error('Dispatch not confirmed');
+         const data=await response.json();
+         const expected=role==='website-developer'?'DRAFT_READY_FOR_QA':'LOCAL_QA_PASSED';
+         if(typeof data.jobId!=='string'||data.result?.agent!==role||data.result?.status!==expected)throw Error('Unexpected result');
+         jobId=data.jobId;
+       }
+       count++;resultStatus=count+'/4 drafts structurally checked';await progress();
+     }
+     state='COMPLETED';resultStatus='4/4 basic drafts structurally checked; full QA and publication blocked';
+   }catch{state='FAILED_OR_UNCERTAIN';resultStatus=count+'/4 drafts structurally checked; stopped; no automatic retry';}
+   await progress();
    return {id,state,jobId,resultStatus,websiteReleaseAuthorized:false};
  }
  if(item.role==='manager'){
