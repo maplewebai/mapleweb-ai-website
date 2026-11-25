@@ -1,0 +1,36 @@
+name: Validate owner Control Center in real HTTPS Chromium (NO CUSTOMER RELEASE)
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths:
+      - 'agents/manager/src/control-center.mjs'
+      - '.github/workflows/verify-control-center-browser.yml'
+permissions:
+  contents: read
+jobs:
+  browser-qa:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium test runner
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify real HTTPS Control Center and mobile navigation
+        run: node tools/qa/verify-control-center.mjs
+      - name: Store PRIVATE QA screenshots (not customer site previews)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-center-internal-browser-qa
+          path: qa-artifacts/
+          retention-days: 3
+          if-no-files-found: ignore
