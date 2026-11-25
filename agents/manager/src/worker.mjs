@@ -24,7 +24,8 @@ import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from './website-delivery-policy.mjs';
 import {serveControlCenter} from './control-center.mjs';
-import {managerChat,chatHistory} from './manager-chat.mjs';
+import {managerChat,chatHistory,parseMessage} from './manager-chat.mjs';
+import {parseCommand,proposeCommand,listCommands,decideCommand,setRoleControl,requireRoleRunning} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -51,7 +52,24 @@ export async function handle(request,env,callingFetchImpl=fetch){
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
   if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env));
-  if(path==='/api/manager/chat'&&request.method==='POST')return json(await managerChat(env,await readJson(request,3800)),201);
+  if(path==='/api/manager/chat'&&request.method==='POST'){
+    const payload=await readJson(request,3800);
+    const message=parseMessage(payload);
+    const command=parseCommand(message);
+    if(command){
+      const proposal=await proposeCommand(env,command);
+      const reply='Task saved for owner approval: '+proposal.role+'/'+proposal.action+' on '+proposal.projectId+'. Nothing has been executed. Approve or reject it in Pending tasks.';
+      const createdAt=new Date().toISOString();
+      await requireDb(env).prepare('INSERT INTO manager_chat(message,reply,kind,created_at) VALUES(?,?,?,?)').bind(message,reply,'verified-record',createdAt).run();
+      return json({message,reply,kind:'verified-record',created_at:createdAt,jobExecuted:false,proposal},201);
+    }
+    return json(await managerChat(env,payload),201);
+  }
+  if(path==='/api/manager/commands'&&request.method==='GET')return json(await listCommands(env));
+  const commandDecision=path.match(/^\/api\/manager\/commands\/([0-9a-f-]{36})\/decision$/);
+  if(commandDecision&&request.method==='POST')return json(await decideCommand(env,commandDecision[1],await readJson(request,300),{dispatch:handle}));
+  const roleControl=path.match(/^\/api\/manager\/roles\/([a-z-]+)\/control$/);
+  if(roleControl&&request.method==='POST')return json(await setRoleControl(env,roleControl[1],await readJson(request,300)));
   if(path==='/api/manager/chat')return methodError();
   if(path==='/api/automation/status'&&request.method==='GET')
     return json({mode:'staging',syntheticOnly:true,enabled:env.SYNTHETIC_AUTOMATION_ENABLED==='true',
@@ -290,6 +308,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
       qaPassed:current.qa_passed===1,revisionOpen:current.revision_open===1,
       ownerApprovedVersion:current.owner_approved,customerApprovedVersion:current.customer_approved};
     if(p.role==='website-developer'&&p.action==='request-revision'&&!current.version)throw bad('No existing draft to revise');
+    await requireRoleRunning(env,p.role);
     const result=await runStagingRole(env,p.role,p.action,input,ctx);
     if(savedCaseAudit){
       result.casePreviewStructure=savedCaseAudit;
