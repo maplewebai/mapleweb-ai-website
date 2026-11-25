@@ -13,14 +13,7 @@ jobs:
   preflight:
     if: github.ref == 'refs/heads/mapleweb-ai-agents'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    env:
-      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      EXPECTED_ACCOUNT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
-      DB_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
-      OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
-      FREE_CONFIRMED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +27,19 @@ jobs:
           npm test
           npm run check
           node --check tools/live-owner-acceptance.mjs
+      - name: Run local browser acceptance on four screen sizes
+        run: |
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install chromium
+          node tools/qa/verify-hq-local-browser.mjs
       - name: Check credential presence and isolated Cloudflare resources (read only)
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_ACCOUNT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+          DB_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
+          OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+          FREE_CONFIRMED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }}
         shell: bash
         run: |
           set -euo pipefail
