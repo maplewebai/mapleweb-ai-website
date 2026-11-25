@@ -1,0 +1,78 @@
+name: MapleWeb Headquarters - read-only deployment preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['agents/manager/REQUEST_HQ_PREFLIGHT.md']
+permissions:
+  contents: read
+concurrency:
+  group: mapleweb-hq-preflight
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      EXPECTED_ACCOUNT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+      DB_ID: ${{ secrets.MAPLEWEB_STAGING_D1_DATABASE_ID }}
+      OWNER_TOKEN: ${{ secrets.MAPLEWEB_STAGING_OWNER_TOKEN }}
+      FREE_CONFIRMED: ${{ vars.MAPLEWEB_STAGING_FREE_CONFIRMED }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test latest development code
+        working-directory: agents/manager
+        run: |
+          npm test
+          npm run check
+          node --check tools/live-owner-acceptance.mjs
+      - name: Check credential presence and isolated Cloudflare resources (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in CF_TOKEN CF_ACCOUNT EXPECTED_ACCOUNT DB_ID OWNER_TOKEN; do
+            if [ -z "${!key:-}" ]; then echo "::error::Missing staging setting $key"; exit 1; fi
+          done
+          if [ "$FREE_CONFIRMED" != "CONFIRMED_FREE_TIER" ]; then echo "::error::Owner free plan confirmation missing"; exit 1; fi
+          if ! [[ "$CF_ACCOUNT" =~ ^[a-fA-F0-9]{32}$ ]] || [ "$CF_ACCOUNT" != "$EXPECTED_ACCOUNT" ]; then echo "::error::Cloudflare account mismatch"; exit 1; fi
+          if ! [[ "$DB_ID" =~ ^[a-fA-F0-9-]{36}$ ]] || [ "${#OWNER_TOKEN}" -lt 32 ]; then echo "::error::Invalid staging database or owner token format"; exit 1; fi
+          root="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT"
+          auth="Authorization: Bearer $CF_TOKEN"
+          check() {
+            local label="$1" url="$2" status
+            status=$(curl -sS --max-time 20 --header "$auth" --output /tmp/hq-check.json --write-out '%{http_code}' "$url")
+            if [ "$status" != 200 ]; then echo "::error::$label returned HTTP $status"; exit 1; fi
+            echo "PASS: $label"
+          }
+          check "Cloudflare account" "$root"
+          jq -e --arg id "$CF_ACCOUNT" '.success == true and .result.id == $id' /tmp/hq-check.json >/dev/null
+          check "Dedicated staging D1" "$root/d1/database/$DB_ID"
+          jq -e --arg id "$DB_ID" '.success == true and .result.uuid == $id and .result.name == "mapleweb-manager-staging-db"' /tmp/hq-check.json >/dev/null
+          check "Existing staging Manager settings" "$root/workers/scripts/mapleweb-manager-v2-staging/settings"
+          jq -e '.success == true' /tmp/hq-check.json >/dev/null
+          echo "Existing binding names and types (no values):"
+          jq -r '.result.bindings[]? | [.name,.type] | @tsv' /tmp/hq-check.json
+          for role in website-developer customer-care sales research quality-checker support finance publishing; do
+            check "Staging role $role" "$root/workers/scripts/mapleweb-role-$role-staging/settings"
+            jq -e '.success == true' /tmp/hq-check.json >/dev/null
+          done
+          manager="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          curl -fsS --max-time 20 "$manager/health" -o /tmp/hq-health.json
+          jq -e '.mode == "staging" and .managerReady == true and .paymentsEnabled == false and .publishingEnabled == false' /tmp/hq-health.json >/dev/null
+          curl -fsS --max-time 20 --header "Authorization: Bearer $OWNER_TOKEN" "$manager/api/status" -o /tmp/hq-status.json
+          jq -e '.mode == "staging" and .storageReady == true and .publishEnabled == false and .paymentsEnabled == false and .realCustomerInputAllowed == false' /tmp/hq-status.json >/dev/null
+          curl -fsS --max-time 40 --header "Authorization: Bearer $OWNER_TOKEN" "$manager/api/integrations/agents-health" -o /tmp/hq-roles.json
+          jq '{liveRolesVerified,totalRoles}' /tmp/hq-roles.json
+          jq -e '.liveRolesVerified == 8 and .totalRoles == 8 and ([.results[].verified] | all)' /tmp/hq-roles.json >/dev/null
+          echo "PASS: existing isolated Manager, owner authentication and eight role health responses" >> "$GITHUB_STEP_SUMMARY"
+      - name: Scope
+        if: always()
+        run: echo "Read-only checks. No deployment, migrations, model inference, customer contact, payment, or production changes." >> "$GITHUB_STEP_SUMMARY"
