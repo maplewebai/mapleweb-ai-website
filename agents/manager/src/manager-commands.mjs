@@ -27,6 +27,13 @@ export async function requireRoleRunning(env,role){
  const record=await db.prepare('SELECT paused FROM manager_role_controls WHERE role=?').bind(role).first();
  if(record?.paused===1)throw bad('Role is paused by owner',409);
 }
+// Owner app must not silently fall back to a local role.
+export function requireRemoteRole(env,role){
+ if(!ROLES.includes(role))throw bad('Unknown agent role');
+ const remote=env['ROLE_'+role.toUpperCase().replace(/-/g,'_')];
+ if(!env.AGENT_EXECUTION_URLS||!remote||typeof remote.fetch!=='function'||typeof env.ROLE_INTERNAL_TOKEN!=='string'||env.ROLE_INTERNAL_TOKEN.length<32)
+   throw bad('Verified remote role binding and authentication are required',503);
+}
 export async function listCommands(env){
  const db=enabled(env);
  const tasks=await db.prepare('SELECT id,role,action,project_id,state,job_id,result_status,created_at,updated_at FROM manager_commands ORDER BY created_at DESC LIMIT 30').all();
@@ -58,9 +65,7 @@ export async function decideCommand(env,id,payload,{dispatch}={}){
  }
  await requireRoleRunning(env,item.role);
  // No fallback to local deterministic role functions for chat-approved remote jobs.
- const remote=env['ROLE_'+item.role.toUpperCase().replace(/-/g,'_')];
- if(!env.AGENT_EXECUTION_URLS||!remote||typeof remote.fetch!=='function'||typeof env.ROLE_INTERNAL_TOKEN!=='string'||env.ROLE_INTERNAL_TOKEN.length<32)
-   throw bad('Verified remote role binding and authentication are required',503);
+ requireRemoteRole(env,item.role);
  if(typeof dispatch!=='function')throw bad('Manager dispatch unavailable',503);
  const task=validateSynthetic({synthetic:true,projectId:item.project_id,role:item.role,action:item.action,input:JSON.parse(item.input_json)});
  if((await claim('RUNNING')).meta?.changes!==1)throw bad('Task already decided',409);
