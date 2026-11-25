@@ -87,7 +87,7 @@ jobs:
           const bindings=live.bindings;
           assert.ok(Array.isArray(bindings));
           const secrets=['MANAGER_OWNER_TOKEN','ROLE_INTERNAL_TOKEN','AGENT_HEALTH_URLS','AGENT_EXECUTION_URLS'];
-          const variables=['MODE','BUSINESS_CASES_ENABLED','SYNTHETIC_AUTOMATION_ENABLED','MANAGER_COMMANDS_ENABLED','MANAGER_THREADS_ENABLED','MANAGER_STRICT_DELIVERY_ENABLED','MANAGER_CHAT_AI_ENABLED','MANAGER_CHAT_FREE_CONFIRMED','MANAGER_CHAT_MODEL'];
+          const variables=['MODE','BUSINESS_CASES_ENABLED','SYNTHETIC_AUTOMATION_ENABLED','MANAGER_COMMANDS_ENABLED','MANAGER_THREADS_ENABLED','MANAGER_STRICT_DELIVERY_ENABLED','MANAGER_CHAT_AI_ENABLED','MANAGER_CHAT_FREE_CONFIRMED','MANAGER_CHAT_MODEL','HQ_BUILD_ID'];
           const services=ROLES.map(role=>({binding:'ROLE_'+role.toUpperCase().replace(/-/g,'_'),service:'mapleweb-role-'+role+'-staging'}));
           for(const name of secrets)assert.equal(bindings.find(b=>b.name===name)?.type,'secret_text','Missing required secret '+name);
           const d1=bindings.find(b=>b.name==='DB');
@@ -109,7 +109,7 @@ jobs:
           const cfg={name:'mapleweb-manager-v2-staging',main:'./src/worker.mjs',
             compatibility_date:live.compatibility_date||'2026-11-01',compatibility_flags:live.compatibility_flags||[],
             workers_dev:true,keep_vars:true,
-            vars:{...currentVars,MODE:'staging',BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',MANAGER_CHAT_AI_ENABLED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_FREE_CONFIRMED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_MODEL:'@cf/meta/llama-3.2-3b-instruct'},
+            vars:{...currentVars,HQ_BUILD_ID:process.env.GITHUB_SHA,MODE:'staging',BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',MANAGER_CHAT_AI_ENABLED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_FREE_CONFIRMED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_MODEL:'@cf/meta/llama-3.2-3b-instruct'},
             d1_databases:[{binding:'DB',database_name:'mapleweb-manager-staging-db',database_id:process.env.DB_ID,migrations_dir:'./migrations'}],
             services,secrets:{required:secrets},ai:{binding:'AI'}
           };
@@ -126,6 +126,21 @@ jobs:
             echo "::error::Live acceptance failed; restore previous staging version only."
             npx wrangler versions deploy "$old@100%" --yes --config .hq-staging.jsonc
           }
+          # Deployments are eventually consistent. Require several consecutive
+          # exact-build responses before making any mutating acceptance requests.
+          consecutive=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "$base/health?qa=$GITHUB_RUN_ID-$attempt" -o /tmp/hq-build-health.json && jq -e --arg sha "$GITHUB_SHA" '.buildId==$sha and .managerReady==true and .mode=="staging"' /tmp/hq-build-health.json >/dev/null; then
+              consecutive=$((consecutive+1))
+              if [ "$consecutive" -ge 5 ]; then break; fi
+            else
+              consecutive=0
+            fi
+            sleep 5
+          done
+          if [ "$consecutive" -lt 5 ]; then rollback; exit 1; fi
+          echo "PASS: exact staging build responded five consecutive times"
+          export MAPLEWEB_EXPECTED_BUILD="$GITHUB_SHA"
           export MAPLEWEB_LIVE_TEST_AUTHORIZED=true
           export MAPLEWEB_AI_TEST_AUTHORIZED="$ai_enabled"
           rc=0
