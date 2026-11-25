@@ -134,6 +134,30 @@ jobs:
             echo "::error::Manager Sales-to-Agent live synthetic test failed"; exit 1
           fi
           echo "PASS: all eight independent Workers verified through internal Cloudflare service bindings and Manager Sales synthetic task." >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify new first-party Control Center HTTPS route (no customer publication)
+        shell: bash
+        run: |
+          set -euo pipefail
+          manager="https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev"
+          curl --fail --silent --show-error --max-time 25 --dump-header /tmp/control-headers.txt "$manager/control" -o /tmp/control-index.html
+          if ! grep -q 'MapleWeb AI — Control Center' /tmp/control-index.html; then
+            echo "::error::Control Center HTML not available over actual HTTPS staging"; exit 1
+          fi
+          if ! grep -q 'No website may be shown' /tmp/control-index.html ||
+             ! grep -q 'Run safe eight-agent demo' /tmp/control-index.html; then
+            echo "::error::Control Center role and QA safety UI incomplete"; exit 1
+          fi
+          if ! grep -qi 'x-robots-tag: noindex, nofollow' /tmp/control-headers.txt ||
+             ! grep -qi 'cache-control: no-store, private' /tmp/control-headers.txt; then
+            echo "::error::Control Center safe response headers missing"; exit 1
+          fi
+          unauth=$(curl --silent --show-error --max-time 20 --output /tmp/control-unauth.json --write-out '%{http_code}' "$manager/api/status")
+          if [ "$unauth" != "401" ]; then
+            echo "::error::Owner API must refuse all unauthorized Control Center requests"; exit 1
+          fi
+          curl --fail --silent --show-error --max-time 25 -H "Authorization: Bearer $MANAGER_OWNER_TOKEN" "$manager/api/status" -o /tmp/control-auth-status.json
+          jq -e '.websiteDelivery.status == "BLOCKED_QA" and .websiteDelivery.ownerPreviewAllowed == false and .websiteDelivery.customerPreviewAllowed == false and .publishEnabled == false and .paymentsEnabled == false' /tmp/control-auth-status.json >/dev/null
+          echo "PASS: real HTTPS Control Center loaded; unauthenticated Manager data blocked, website previews blocked, publishing/payments disabled." >> "$GITHUB_STEP_SUMMARY"
       - name: Verify and run complete automatic fictional demo through all eight live roles
         shell: bash
         run: |
