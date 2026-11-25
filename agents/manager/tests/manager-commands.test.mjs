@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {parseCommand,proposeCommand,decideCommand,listCommands,setRoleControl,requireRoleRunning} from '../src/manager-commands.mjs';
+import {parseCommand,interpretOwnerTask,proposeCommand,decideCommand,listCommands,setRoleControl,requireRoleRunning} from '../src/manager-commands.mjs';
 import worker from '../src/worker.mjs';
 const token='test-owner-'.repeat(5);
 function setup(t){
@@ -157,4 +157,32 @@ test('Manager stops at failed step without retry and preserves partial progress'
  }});
  assert.equal(calls,2);assert.equal(result.state,'FAILED_OR_UNCERTAIN');
  assert.match(result.resultStatus,/1\/8 confirmed; stopped at research/);
+});
+
+test('natural tasks preserve clear scope and refuse ambiguous or prohibited execution',()=>{
+ const options={newId:()=> 'CASE-TEST'};
+ const website=interpretOwnerTask('Please create a fictional bakery website and test it',options);
+ assert.equal(website.command.role,'manager');
+ assert.equal(website.command.input.business,'Fictional bakery');
+ assert.equal(website.command.projectId,'CASE-TEST');
+ assert.match(website.scope,/Not full browser/);
+ assert.equal(interpretOwnerTask('Make me a website for a fictional bakery',options).command.role,'website-developer');
+ assert.equal(interpretOwnerTask('Test the website for project CASE001').command.role,'quality-checker');
+ assert.equal(interpretOwnerTask('Prepare a quote for tier 3',options).command.input.tier,3);
+ assert.match(interpretOwnerTask('Finish and test it').reply,/Which fictional project/);
+ for(const message of ['Do not create a fictional bakery website','How do I create a fictional bakery website','Create a fictional bakery website and publish it','Create a real customer website','Check payment setup and charge the customer'])assert.equal(interpretOwnerTask(message,options),null);
+});
+test('ordinary English chat creates a saved approval without AI or execution',async t=>{
+ const env=setup(t);
+ const payload={synthetic:true,message:'Please create a fictional bakery website and test it'};
+ const response=await worker.fetch(new Request('https://staging.test/api/manager/chat',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(payload)}),env);
+ assert.equal(response.status,201);
+ const turn=await response.json();
+ assert.equal(turn.inlineApproval,true);assert.equal(turn.jobExecuted,false);assert.equal(turn.proposal.role,'manager');
+ assert.match(turn.reply,/Task reference: /);
+ const saved=await listCommands(env);
+ assert.equal(saved.tasks.length,1);assert.equal(saved.tasks[0].state,'AWAITING_APPROVAL');
+ assert.match(saved.tasks[0].detail,/Fictional bakery/);
+ const history=await worker.fetch(new Request('https://staging.test/api/manager/chat',{headers:{authorization:'Bearer '+token}}),env);
+ assert.equal((await history.json()).turns[0].reply,turn.reply);
 });
