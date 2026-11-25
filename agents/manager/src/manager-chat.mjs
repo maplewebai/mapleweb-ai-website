@@ -26,9 +26,9 @@ export function parseMessage(payload) {
 }
 export function classifyMessage(message) {
   const normalized=message.trim().toLowerCase().replace(/[?.!]+$/,'');
-  if(/^(?:status|manager status|what is the status|how is the manager doing)$/.test(normalized))return 'status';
-  if(/^(?:jobs|recent jobs|show recent jobs|what are the agents doing|show tasks|what have you done)$/.test(normalized))return 'jobs';
-  if(/^(?:agents|agent health|check agents|are the agents active|check agent health)$/.test(normalized))return 'agents';
+  if(/^(?:status|manager status|what is the status|how is the manager doing|how are things going|give me an update|manager update)$/.test(normalized))return 'status';
+  if(/^(?:jobs|recent jobs|show recent jobs|what are the agents doing|show tasks|what have you done|what are my agents working on|show me the tasks|show me recent jobs|what tasks are completed)$/.test(normalized))return 'jobs';
+  if(/^(?:agents|agent health|check agents|are the agents active|check agent health|are all agents connected|are my agents working|check all agents)$/.test(normalized))return 'agents';
   if(/^(github status|check github|github agent status|check github agent)$/.test(normalized))return 'github-status';
   if(/^github task status #?[1-9][0-9]{0,8}$/.test(normalized))return 'github-task-status';
   return 'advice';
@@ -103,7 +103,7 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
             {role:'assistant',content:String(t.reply).slice(0,1000)}
           ]);
           const result=await env.AI.run(env.MANAGER_CHAT_MODEL,{messages:[
-            {role:'system',content:(agentRole?'You are the MapleWeb AI '+agentRole+' planning assistant, mediated by the Manager. Stay within the selected role. This is shared AI advice, not an independent executing agent. ':'')+'You are MapleWeb AI Manager in private staging. Give concise planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
+            {role:'system',content:(agentRole?'You are the MapleWeb AI '+agentRole+' planning assistant, mediated by the Manager. Focus on that role’s responsibilities; explain what its supported tasks can do and clearly distinguish recommendations from actual recorded work. This is shared AI advice, not an independent executing agent. ':'')+'You are MapleWeb AI Manager in private staging. Answer the owner in plain, professional English. Address the specific question first. Use short paragraphs, meaningful headings or numbered steps when useful. Offer practical recommendations tailored to the current fictional project and remember the supplied recent conversation. Ask a single focused question only when necessary. Give planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
             ...conversation,{role:'user',content:message}],max_completion_tokens:512,stream:false,store:false,temperature:0.3,chat_template_kwargs:{enable_thinking:false}});
           const output=modelText(result);
           if(!output){aiFailure=result?.choices?.[0]?.finish_reason==='length'?'EMPTY_LENGTH_LIMIT':'EMPTY_MODEL_TEXT';throw Error('No supported model text');}
