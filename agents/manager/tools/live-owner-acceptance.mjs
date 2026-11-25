@@ -100,13 +100,30 @@ async function main(){
  assert.equal(quote.case.quote.status,'DRAFT_NOT_SENT');assert.equal(quote.case.paymentAuthorized,false);
  await req('/api/business/cases/'+runId+'/fictional-bundle',{expected:423});
  console.log('PASS: live business case and quote, website artifact withheld');
+ const page=await fetch(base+'/control',{redirect:'error',signal:AbortSignal.timeout(15000),headers:{'cache-control':'no-cache'}});
+ assert.equal(page.status,200);assert.equal(page.headers.get('X-MapleWeb-Build'),expectedBuild);
+ const markup=await page.text();
+ for(const id of ['managerChatView','managerTaskView','managerMenu','managerNewChat','chatSend'])assert.ok(markup.includes('id="'+id+'"'),'Live full-screen Manager missing '+id);
+ console.log('PASS: exact deployed full-screen Manager HTML');
+ await req('/api/manager/quota',{auth:false,expected:401});
+ const quota=await req('/api/manager/quota');
+ assert.equal(quota.cap,10);assert.equal(quota.remaining,10-quota.used);assert.equal(quota.exhausted,quota.remaining===0);
+ const badCommand=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'run manager for I want you to finish and test'},expected:201});
+ assert.equal(badCommand.kind,'verified-record');assert.equal(badCommand.jobExecuted,false);assert.match(badCommand.reply,/No task was created/);
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
   assert.equal(model.enabled,true,'Free-model binding not enabled');
   const ai=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Suggest three improvements for a fictional bakery website.'},expected:201});
-  assert.equal(ai.kind,'ai-advice','AI inference: '+(/^(?:PROVIDER_[A-Z0-9_]+|EMPTY_[A-Z0-9_]+)$/.test(ai.aiFailure||'')?ai.aiFailure:'NO_SAFE_DIAGNOSTIC'));assert.equal(ai.jobExecuted,false);assert.ok(ai.reply.length>40);
-  console.log('PASS: actual configured Workers AI response');
+  if(ai.kind==='unavailable'&&ai.aiFailure==='DAILY_ALLOWANCE_EXHAUSTED'){
+   const after=await req('/api/manager/quota');
+   assert.equal(after.exhausted,true);assert.equal(after.used,after.cap);assert.equal(ai.jobExecuted,false);assert.match(ai.reply,/daily AI allowance is exhausted/);
+   console.log('PASS: real quota exhaustion handled safely; verified task controls remain operational. Fresh model inference NOT verified in this release.');
+   process.exitCode=3;
+  }else{
+   assert.equal(ai.kind,'ai-advice','AI inference: '+(/^(?:PROVIDER_[A-Z0-9_]+|EMPTY_[A-Z0-9_]+)$/.test(ai.aiFailure||'')?ai.aiFailure:'NO_SAFE_DIAGNOSTIC'));assert.equal(ai.jobExecuted,false);assert.ok(ai.reply.length>40);
+   console.log('PASS: actual configured Workers AI response');
+  }
  }else{console.log('NOT VERIFIED: live AI inference (explicit free-plan test authorization required)');process.exitCode=2;}
  console.log('No customer delivery or payment operations tested or enabled. Browser/device verification remains a separate release gate.');
 }
