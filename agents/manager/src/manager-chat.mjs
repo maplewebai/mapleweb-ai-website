@@ -14,6 +14,15 @@ export function managerModelReadiness(env={}){
   const enabled=env.MANAGER_CHAT_AI_ENABLED==='true'&&freePlanConfirmed&&bindingConfigured&&!!model;
   return {enabled,bindingConfigured,freePlanConfirmed,model,liveInferenceVerified:false,dailyRequestCap:10,paidFallback:false};
 }
+// Read-only quota information for the owner and release verification. Never reset or bypass the counter.
+export async function managerQuota(env){
+ const day=new Date().toISOString().slice(0,10),cap=10,db=requireDb(env);
+ const rows=await db.prepare('SELECT used FROM manager_chat_quota WHERE day=?').bind(day).all();
+ const used=rows.results?.[0]?.used??0;
+ if(!Number.isSafeInteger(used)||used<0||used>cap)throw bad('Chat allowance cannot be confirmed',503);
+ const resetAt=new Date(Date.parse(day+'T00:00:00Z')+86400000).toISOString();
+ return {day,used,cap,remaining:cap-used,resetAt,exhausted:used===cap};
+}
 export function parseMessage(payload) {
   if (!payload || typeof payload!=='object' || Array.isArray(payload) ||
       Object.keys(payload).some(k=>!['synthetic','message','threadId'].includes(k)) || payload.synthetic!==true ||
@@ -85,6 +94,8 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
         reply='GitHub development issue #'+task.number+' — '+task.state+'. Issue state alone does not prove code changes or completed tests.';
       }
     }catch{kind='unavailable';reply='GitHub could not be verified. No task execution or status is claimed.';}
+  }else if(!agentRole&&/^run\s+/i.test(message)){
+    reply='No task was created. Use a short fictional project ID, for example: run manager for CASE001. To assign work, open Tasks, choose the Manager or agent, enter the project ID, and approve the saved task. A sentence is not a project ID.';
   }else{
     kind='unavailable';
     reply='Natural-language AI is not connected yet. I have not assigned or executed your instruction. You can use the agent controls for supported staging jobs, or ask "status", "recent jobs" or "check agents". No website is released without independent final-build QA.';
@@ -114,7 +125,11 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
           reply='The configured AI model did not return a usable response ('+aiFailure+'). No job was executed. The reserved request remains counted against the daily limit.';
           kind='unavailable';
         }
-      }else reply='The Manager chat daily allowance is exhausted or cannot be confirmed. No AI request or job was executed.';
+      }else{
+        const quota=await managerQuota(env);
+        if(quota.exhausted){aiFailure='DAILY_ALLOWANCE_EXHAUSTED';reply='The daily AI allowance is exhausted (10 of 10 requests). It resets at '+quota.resetAt.replace('T',' ').slice(0,16)+' UTC. You can still check agent status, read task records and assign supported tasks. No AI request or job was executed.';}
+        else{aiFailure='DAILY_ALLOWANCE_UNCONFIRMED';reply='The AI allowance could not be confirmed. No AI request or job was executed. Verified task and status controls remain available.';}
+      }
     }
   }
   const createdAt=new Date().toISOString();
