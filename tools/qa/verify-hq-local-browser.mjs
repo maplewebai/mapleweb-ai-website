@@ -100,6 +100,39 @@ try{
     await text('#commandList','8/8 staging steps confirmed');
     assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(9, 9, 9)');
 
+    await click('[data-tab="agents"]');
+    await page.locator('#agentGrid .agent').filter({hasText:'Website Developer'}).click();
+    await visible('#agentWorkspace');
+    await text('#workspaceName','Website Developer');
+    await text('#workspaceStatus','Records checked');
+    await click('#agentAskStatus');
+    await text('#agentTurns','Verified website-developer records');
+    await click('[data-agent-pane="agentAssignPane"]');
+    await page.locator('#agentProject').fill('AGENTQA');
+    await page.locator('#agentDetail').fill('Fictional bookstore with a reading area');
+    await click('#agentPrepare');
+    await visible('#agentTasksPane');
+    await text('#agentAssignments','AGENTQA');
+    await text('#agentAssignments','AWAITING APPROVAL');
+    page.once('dialog',d=>d.accept());
+    await page.locator('#agentAssignments .workspaceJob').filter({hasText:'AGENTQA'}).getByRole('button',{name:'Approve',exact:true}).click();
+    await text('#agentAssignments','DRAFT READY FOR QA');
+    await text('#agentJobs','AGENTQA');
+    const workspaceResult=await page.evaluate(async tok=>(await fetch('/api/agents/website-developer/workspace',{headers:{authorization:'Bearer '+tok}})).json(),token);
+    assert.ok(workspaceResult.jobs.every(j=>j.role==='website-developer'&&!Object.hasOwn(j,'result_json')));
+    assert.ok(workspaceResult.turns.some(t=>t.message.includes('Fictional bookstore')));
+    await click('#agentBack');
+    await page.locator('#agentGrid .agent').filter({hasText:'Quality Checker'}).click();
+    await text('#workspaceName','Quality Checker');
+    await text('#workspaceStatus','Records checked');
+    assert.ok(!(await page.locator('#agentTurns').textContent()).includes('Fictional bookstore'));
+    await click('#agentBack');
+    await page.locator('#agentGrid .agent').filter({hasText:'Website Developer'}).click();
+    await text('#agentTurns','Fictional bookstore');
+    const workspaceLayout=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
+    assert.ok(workspaceLayout.scroll<=workspaceLayout.width+1,'Workspace layout overflow '+JSON.stringify(workspaceLayout));
+    await click('[data-tab="manager"]');
+
     page.once('dialog',d=>d.accept('Local QA conversation'));
     await click('#newThread');
     await visible('#threadAttachments');
@@ -128,6 +161,8 @@ try{
     await click('#logout');
     await visible('#signin');
     assert.equal(await page.locator('#chatTurns').textContent(),'');
+    assert.equal(await page.locator('#agentTurns').textContent(),'');
+    assert.equal(await page.locator('#agentAssignments').textContent(),'');
     assert.equal(await page.locator('#fileContent').textContent(),'');
     assert.equal(await page.locator('#businessTitle').textContent(),'Select a case');
     assert.deepEqual(errors,[],'Browser runtime errors');
