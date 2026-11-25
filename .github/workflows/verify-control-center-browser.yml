@@ -5,6 +5,7 @@ on:
     branches: [mapleweb-ai-agents]
     paths:
       - 'agents/manager/src/control-center.mjs'
+      - 'tools/qa/verify-hq-local-browser.mjs'
       - '.github/workflows/verify-control-center-browser.yml'
 permissions:
   contents: read
@@ -24,6 +25,8 @@ jobs:
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.56.1
           npx playwright install --with-deps chromium
+      - name: Verify new source in Chromium before any deployment
+        run: node tools/qa/verify-hq-local-browser.mjs
       - name: Verify real HTTPS Control Center and mobile navigation
         run: node tools/qa/verify-control-center.mjs
       - name: Store PRIVATE QA screenshots (not customer site previews)
