@@ -24,6 +24,7 @@ import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from './website-delivery-policy.mjs';
 import {serveControlCenter} from './control-center.mjs';
+import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage} from './manager-chat.mjs';
 import {parseCommand,proposeCommand,listCommands,decideCommand,setRoleControl,requireRoleRunning} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
@@ -39,6 +40,7 @@ export const defaultProject=(id,old=null)=>({id,version:old?.version||0,draft_ht
   qa_passed:0,revision_open:0,owner_approved:0,customer_approved:0});
 export async function handle(request,env,callingFetchImpl=fetch){
   const u=new URL(request.url);const path=u.pathname;
+  const asset=controlAsset(path,request.method);if(asset)return asset;
   if(path==='/control'&&request.method==='GET')return serveControlCenter();
   if(path==='/control')return methodError();
   if(path==='/health'&&request.method==='GET')return json({service:'mapleweb-manager-rebuilt',
