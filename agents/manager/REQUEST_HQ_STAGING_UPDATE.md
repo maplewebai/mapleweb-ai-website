@@ -27,3 +27,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Retest and deploy the full-screen Manager interface with authenticated quota checks and accurate invalid-task guidance. Confirm exact live HTML, all remote task controls, and safe handling of the exhausted allowance; do not reset quota or enable paid AI. Retain rollback for real failures.
 
 - 2026-11-25: Validate and deploy plain-English Manager chat assignments, scope previews, in-chat approval and verified task results. Test natural-language routing without AI quota, clarify ambiguous tasks and retain all staging safeguards and rollback checks.
+
+- 2026-11-25: Deploy removal of the app-level ten-message limit on the verified free plan. Preserve usage records with migration 0007, provider free-compute limits, owner approvals and rollback checks. Verify four-draft workflow and blocked publishing. No paid fallback or live customer operations.
