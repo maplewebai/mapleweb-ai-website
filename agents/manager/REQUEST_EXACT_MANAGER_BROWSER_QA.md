@@ -9,3 +9,4 @@ Run the `.github/workflows/manager-final-preview-qa.yml` workflow on `mapleweb-a
 The standalone rich site has passed separate local Chromium checks, but Android Samsung `content://media/` is not device-tested. The user can validate via a standalone local diagnostic in a separate step; do not claim device-specific signoff without the device itself.
 
 No public site changes, paid calls, customer communication, payment activation, or customer publishing.
+Retry: the preceding QA job blocked at Playwright dependency installation on Ubuntu 26. The workflow now pins Ubuntu 24.04 so the browser can run. All release safeguards remain enabled.
