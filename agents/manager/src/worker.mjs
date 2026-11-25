@@ -381,10 +381,17 @@ export async function handle(request,env,callingFetchImpl=fetch){
 }
 export default {
   async fetch(request,env){
-    try{return await handle(request,env||{});}catch(e){
+    let response;
+    try{response=await handle(request,env||{});}catch(e){
       const status=Number.isInteger(e?.status)&&e.status>=400&&e.status<=599?e.status:500;
-      return json({error:status===500?'Internal error':String(e.message).slice(0,220)},status);
+      response=json({error:status===500?'Internal error':String(e.message).slice(0,220)},status);
     }
+    if(/^[a-f0-9]{40}$/.test(env?.HQ_BUILD_ID||'')){
+      const headers=new Headers(response.headers);
+      headers.set('X-MapleWeb-Build',env.HQ_BUILD_ID);
+      return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+    }
+    return response;
   },
   async scheduled(event,env,ctx){
     // Only Cloudflare's preapproved daily cron can invoke this handler.
