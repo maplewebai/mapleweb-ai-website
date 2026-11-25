@@ -25,7 +25,8 @@ import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from './website-delivery-policy.mjs';
 import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
-import {managerChat,chatHistory,parseMessage} from './manager-chat.mjs';
+import {managerChat,chatHistory,parseMessage,saveChatTurn} from './manager-chat.mjs';
+import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
 import {parseCommand,proposeCommand,listCommands,decideCommand,setRoleControl,requireRoleRunning} from './manager-commands.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
@@ -53,20 +54,29 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
-  if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env));
+  if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env,u.searchParams.get('threadId')));
   if(path==='/api/manager/chat'&&request.method==='POST'){
     const payload=await readJson(request,3800);
     const message=parseMessage(payload);
+    if(payload.threadId!==undefined)await requireThread(env,payload.threadId);
     const command=parseCommand(message);
     if(command){
       const proposal=await proposeCommand(env,command);
       const reply='Task saved for owner approval: '+proposal.role+'/'+proposal.action+' on '+proposal.projectId+'. Nothing has been executed. Approve or reject it in Pending tasks.';
       const createdAt=new Date().toISOString();
-      await requireDb(env).prepare('INSERT INTO manager_chat(message,reply,kind,created_at) VALUES(?,?,?,?)').bind(message,reply,'verified-record',createdAt).run();
+      await saveChatTurn(env,{message,reply,kind:'verified-record',createdAt,threadId:payload.threadId??null});
       return json({message,reply,kind:'verified-record',created_at:createdAt,jobExecuted:false,proposal},201);
     }
     return json(await managerChat(env,payload),201);
   }
+  if(path==='/api/manager/threads'&&request.method==='GET')return json(await listThreads(env));
+  if(path==='/api/manager/threads'&&request.method==='POST')return json(await createThread(env,await readJson(request,600)),201);
+  const threadFiles=path.match(/^\/api\/manager\/threads\/([0-9a-f-]{36})\/files$/);
+  if(threadFiles&&request.method==='GET')return json(await listThreadFiles(env,threadFiles[1]));
+  if(threadFiles&&request.method==='POST')return json(await addThreadFile(env,threadFiles[1],await readJson(request,40000)),201);
+  const threadFile=path.match(/^\/api\/manager\/threads\/([0-9a-f-]{36})\/files\/([0-9a-f-]{36})$/);
+  if(threadFile&&request.method==='GET')return json(await readThreadFile(env,threadFile[1],threadFile[2]));
+  if(threadFile&&request.method==='DELETE')return json(await deleteThreadFile(env,threadFile[1],threadFile[2]));
   if(path==='/api/manager/commands'&&request.method==='GET')return json(await listCommands(env));
   const commandDecision=path.match(/^\/api\/manager\/commands\/([0-9a-f-]{36})\/decision$/);
   if(commandDecision&&request.method==='POST')return json(await decideCommand(env,commandDecision[1],await readJson(request,300),{dispatch:handle}));
