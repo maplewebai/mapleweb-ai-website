@@ -22,6 +22,7 @@ import {submitFictionalOrder,ownerFictionalOrderProgress} from './fictional-orde
 import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-order-queue.mjs';
 import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
+import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from './website-delivery-policy.mjs';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{
   'content-type':'application/json;charset=utf-8','cache-control':'no-store',
   'x-content-type-options':'nosniff','x-frame-options':'DENY',
@@ -30,7 +31,7 @@ const methodError=()=>json({error:'Not found or method not allowed'},404);
 const projectView=p=>p?{id:p.id,version:p.version,qaPassed:p.qa_passed===1,
   revisionOpen:p.revision_open===1,ownerApprovedVersion:p.owner_approved||null,
   customerApprovedVersion:p.customer_approved||null,
-  publication:'DISABLED'}:null;
+  publication:'DISABLED',delivery:deliveryPolicyForProject(p)}:null;
 export const defaultProject=(id,old=null)=>({id,version:old?.version||0,draft_html:old?.draft_html||'',
   qa_passed:0,revision_open:0,owner_approved:0,customer_approved:0});
 export async function handle(request,env,callingFetchImpl=fetch){
@@ -69,6 +70,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
     cloudflare:{inspectorConfigured:!!env.CLOUDFLARE_READ_TOKEN},
     callingSales:callingSalesState(env),
     paymentsEnabled:false,publishEnabled:false,realCustomerInputAllowed:false,
+    websiteDelivery:WEBSITE_DELIVERY_POLICY,
     headquartersProtection:{automaticShutdownAllowed:false,ownerApprovalRequired:true,
       ownerApprovalVerifierConnected:false,siteOperationsAvailable:false},
     customerSiteProtection:{automaticSuspensionAllowed:false,ownerApprovalRequired:true,
