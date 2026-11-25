@@ -170,8 +170,8 @@ jobs:
             exit 1
           fi
           if [ "$rc" = 3 ]; then
-            echo "::warning::Verified daily AI allowance exhausted. Full-screen UI and remote task controls passed; fresh AI inference not verified. Quota unchanged."
-            echo "STAGING UI AND TASKS VERIFIED. Fresh AI inference not verified: confirmed daily allowance exhausted. No quota bypass." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Cloudflare free compute allowance exhausted. UI and remote tasks passed; fresh AI inference not verified. No paid fallback."
+            echo "STAGING UI AND TASKS VERIFIED. Fresh AI inference not verified: provider free compute allowance exhausted. No paid fallback." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "Staging API acceptance passed, including model response. Final real-phone QA and production business operations remain separate." >> "$GITHUB_STEP_SUMMARY"
