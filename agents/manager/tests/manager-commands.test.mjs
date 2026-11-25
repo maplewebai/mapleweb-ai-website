@@ -109,3 +109,14 @@ test('GitHub task rejects contact information and cannot approve itself',async t
  await decideCommand(env,task.id,{decision:'reject'});
  assert.equal((await listCommands(env)).tasks[0].state,'REJECTED');
 });
+
+test('exact build identity is attached to health and unauthorized responses',async()=>{
+ const build='a'.repeat(40);
+ const env={HQ_BUILD_ID:build,MANAGER_OWNER_TOKEN:'test-owner-'.repeat(5)};
+ const health=await worker.fetch(new Request('https://staging.test/health'),env);
+ assert.equal(health.headers.get('X-MapleWeb-Build'),build);
+ assert.equal((await health.json()).buildId,build);
+ const denied=await worker.fetch(new Request('https://staging.test/api/status'),env);
+ assert.equal(denied.status,401);
+ assert.equal(denied.headers.get('X-MapleWeb-Build'),build);
+});
