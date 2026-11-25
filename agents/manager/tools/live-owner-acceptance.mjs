@@ -5,7 +5,7 @@ const base='https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev';
 const token=process.env.MAPLEWEB_STAGING_OWNER_TOKEN;
 assert.ok(token&&token.length>=32,'Provide existing owner token via environment, never command arguments');
 assert.equal(process.env.MAPLEWEB_LIVE_TEST_AUTHORIZED,'true','Explicit isolated live-test permission required');
-const runId='QA'+Date.now();
+const runId='QA'+crypto.randomUUID().replace(/-/g,'').slice(0,20).replace(/[0-9]/g,d=>String.fromCharCode(65+Number(d))).toUpperCase();
 async function req(path,{method='GET',body,auth=true,expected=200}={}){
  const r=await fetch(base+path,{method,redirect:'error',signal:AbortSignal.timeout(45000),headers:{...(auth?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  assert.equal(r.status,expected,method+' '+path);
@@ -41,6 +41,8 @@ async function main(){
   assert.equal(proposal.proposal.state,'AWAITING_APPROVAL');
   const result=await req('/api/manager/commands/'+proposal.proposal.id+'/decision',{method:'POST',body:{decision:'approve'}});
   assert.equal(result.state,'COMPLETED',role+' dispatch');
+  const expected={ 'customer-care':'DRAFT_ONLY',research:'RESEARCH_PLAN_ONLY',sales:'OWNER_REVIEW_REQUIRED','website-developer':'DRAFT_READY_FOR_QA','quality-checker':'LOCAL_QA_PASSED',support:'DRAFT_ONLY',finance:'SETUP_NOT_CONNECTED',publishing:'NOT_PUBLISHED' };
+  assert.equal(result.resultStatus,expected[role],role+' actual result');
   assert.equal(result.websiteReleaseAuthorized,false);assert.ok(result.jobId);
   const job=await req('/api/jobs/'+result.jobId);
   assert.equal(job.result.agent,role);assert.equal(job.result.websiteReleaseAuthorized,false);
