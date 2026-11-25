@@ -2,10 +2,12 @@
 import {bad,validateSynthetic} from './security.mjs';
 import {requireDb,listJobs} from './store.mjs';
 import {checkRoleHealth} from './cloudflare.mjs';
+import {requireThread} from './manager-threads.mjs';
 
 export function parseMessage(payload) {
   if (!payload || typeof payload!=='object' || Array.isArray(payload) ||
-      Object.keys(payload).length!==2 || payload.synthetic!==true ||
+      Object.keys(payload).some(k=>!['synthetic','message','threadId'].includes(k)) || payload.synthetic!==true ||
+      (Object.hasOwn(payload,'threadId')&&typeof payload.threadId!=='string') ||
       typeof payload.message!=='string') throw bad('Send a synthetic owner instruction');
   const message=payload.message.trim();
   if(!message || message.length>800) throw bad('Enter 1–800 characters');
@@ -19,13 +21,25 @@ export function classifyMessage(message) {
   if(/^(?:agents|agent health|check agents|are the agents active|check agent health)$/.test(normalized))return 'agents';
   return 'advice';
 }
-export async function chatHistory(env) {
+function scopedChat(db,env,threadId,sql){
+  if(env.MANAGER_THREADS_ENABLED!=='true')return db.prepare(sql.replace('/*scope*/',''));
+  return threadId?db.prepare(sql.replace('/*scope*/','AND thread_id=?')).bind(threadId):db.prepare(sql.replace('/*scope*/','AND thread_id IS NULL'));
+}
+export async function chatHistory(env,threadId=null) {
+  if(threadId!==null)await requireThread(env,threadId);
   const db=requireDb(env);
-  const r=await db.prepare('SELECT id,message,reply,kind,created_at FROM manager_chat ORDER BY id DESC LIMIT 30').all();
+  const r=await scopedChat(db,env,threadId,'SELECT id,message,reply,kind,created_at FROM manager_chat WHERE 1=1 /*scope*/ ORDER BY id DESC LIMIT 30').all();
   return {turns:(r.results||[]).reverse(),mode:'private-staging'};
 }
+export async function saveChatTurn(env,{message,reply,kind,createdAt,threadId=null}){
+  if(threadId!==null)await requireThread(env,threadId);
+  const db=requireDb(env);
+  if(threadId!==null)await db.prepare('INSERT INTO manager_chat(message,reply,kind,created_at,thread_id) VALUES(?,?,?,?,?)').bind(message,reply,kind,createdAt,threadId).run();
+  else await db.prepare('INSERT INTO manager_chat(message,reply,kind,created_at) VALUES(?,?,?,?)').bind(message,reply,kind,createdAt).run();
+}
 export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
-  const message=parseMessage(payload);
+  const message=parseMessage(payload),threadId=payload.threadId??null;
+  if(threadId!==null)await requireThread(env,threadId);
   const db=requireDb(env);
   const intent=classifyMessage(message);
   let reply,kind='verified-record';
@@ -51,7 +65,7 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
         try{
           // Only the last three advice exchanges are sent, each bounded. Stored
           // status/command records are never supplied as model instructions.
-          const prior=await db.prepare("SELECT message,reply FROM manager_chat WHERE kind='ai-advice' ORDER BY id DESC LIMIT 3").all();
+          const prior=await scopedChat(db,env,threadId,"SELECT message,reply FROM manager_chat WHERE kind='ai-advice' /*scope*/ ORDER BY id DESC LIMIT 3").all();
           const conversation=(prior.results||[]).reverse().flatMap(t=>[
             {role:'user',content:String(t.message).slice(0,800)},
             {role:'assistant',content:String(t.reply).slice(0,1000)}
@@ -70,6 +84,6 @@ export async function managerChat(env,payload,{health=checkRoleHealth}={}) {
     }
   }
   const createdAt=new Date().toISOString();
-  await db.prepare('INSERT INTO manager_chat(message,reply,kind,created_at) VALUES(?,?,?,?)').bind(message,reply,kind,createdAt).run();
+  await saveChatTurn(env,{message,reply,kind,createdAt,threadId});
   return {message,reply,kind,created_at:createdAt,jobExecuted:false};
 }
