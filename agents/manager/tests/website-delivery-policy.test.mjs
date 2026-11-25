@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/worker.mjs';
-import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject} from '../src/website-delivery-policy.mjs';
+import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,ownerJobResult} from '../src/website-delivery-policy.mjs';
 
 test('website manager never permits website release on missing independent release evidence',()=>{
   assert.equal(WEBSITE_DELIVERY_POLICY.status,'BLOCKED_QA');
@@ -36,4 +36,15 @@ test('owner-only Manager status clearly reports release blocked for owner AND cu
   assert.equal(data.websiteDelivery.customerPreviewAllowed,false);
   assert.equal(data.websiteDelivery.deliveryAdapterReady,false);
   assert.equal(data.publishEnabled,false);
+});
+
+test('owner app strips untested website content and retains only safe result fields',()=>{
+  const raw={agent:'website-developer',status:'DRAFT_READY_FOR_QA',version:1,html:'<html>UNTESTED</html>',bundle:{files:['SECRET']},liveUrl:'https://invalid.example',other:'unsafe'};
+  for(const env of [{MANAGER_COMMANDS_ENABLED:'true'},{MANAGER_THREADS_ENABLED:'true'},{MANAGER_STRICT_DELIVERY_ENABLED:'true'}]){
+    const r=ownerJobResult(env,raw);
+    assert.equal(r.status,'DRAFT_READY_FOR_QA');
+    assert.equal(r.websiteReleaseAuthorized,false);
+    assert.equal(r.deliveryStatus,'BLOCKED_QA');
+    for(const key of ['html','bundle','liveUrl','other'])assert.equal(Object.hasOwn(r,key),false);
+  }
 });
