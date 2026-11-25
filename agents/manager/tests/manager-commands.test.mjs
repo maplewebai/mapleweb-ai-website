@@ -71,3 +71,29 @@ test('authenticated chat command creates task; no unauthenticated access',async 
  assert.equal((await worker.fetch(req('/api/manager/commands','GET',null,false),env)).status,401);
  assert.equal((await listCommands(env)).tasks.length,1);
 });
+
+test('GitHub issue task requires approval and credentials, records assignment only',async t=>{
+ const env=setup(t),command=parseCommand('github task: Fix browser test configuration');
+ assert.equal(command.role,'github');
+ const task=await proposeCommand(env,command);
+ let calls=0;
+ const assignGitHub=async(e,p)=>{calls++;assert.equal(p.instruction,'Fix browser test configuration');return {created:true,number:42}};
+ await assert.rejects(decideCommand(env,task.id,{decision:'approve'},{assignGitHub}),/credential not configured/);
+ assert.equal(calls,0);
+ env.GITHUB_TOKEN='mock-test-only';
+ await setRoleControl(env,'github',{paused:true});
+ await assert.rejects(decideCommand(env,task.id,{decision:'approve'},{assignGitHub}),/paused/);
+ await setRoleControl(env,'github',{paused:false});
+ const result=await decideCommand(env,task.id,{decision:'approve'},{assignGitHub});
+ assert.equal(result.resultStatus,'ISSUE_CREATED_NOT_EXECUTION: #42');
+ assert.equal(result.jobId,'github-issue-42');
+ await assert.rejects(decideCommand(env,task.id,{decision:'approve'},{assignGitHub}),/already decided/);
+ assert.equal(calls,1);
+});
+test('GitHub task rejects contact information and cannot approve itself',async t=>{
+ const env=setup(t);
+ assert.throws(()=>parseCommand('github task: Contact test@example.com'));
+ const task=await proposeCommand(env,parseCommand('github task: Check existing unit tests'));
+ await decideCommand(env,task.id,{decision:'reject'});
+ assert.equal((await listCommands(env)).tasks[0].state,'REJECTED');
+});
