@@ -15,3 +15,5 @@ Correct free-plan check to account for default Workers Free with no explicit sub
 Free-plan verification passed and all eight live roles passed. AI returned unavailable. Retry with compatible response extraction, bounded 512-token completion, thinking disabled, and sanitized error classification. No paid fallback or retry of ambiguous AI request.
 
 - 2026-11-25: Verify and deploy classic black Headquarters UI, task dashboard and Manager eight-step coordination to existing isolated staging only. Retain current owner credentials, free-plan guard and rollback protections.
+
+- 2026-11-25: Validate and deploy role-specific chat workspaces, filtered task and job history, and owner-approved assignments. Require full local mobile browser tests and live remote-role acceptance; retain current staging safety and rollback guards.
