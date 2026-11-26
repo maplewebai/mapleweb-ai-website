@@ -95,6 +95,9 @@ jobs:
             echo "Subscription check inconclusive. AI remains disabled."
           fi
           export HQ_AI_ENABLED="$ai_enabled"
+          browser_enabled=false
+          if [ "$subscription_status" = 200 ] && [ "$ai_enabled" = true ]; then browser_enabled=true; fi
+          export HQ_BROWSER_ENABLED="$browser_enabled"
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import assert from 'node:assert/strict';
@@ -104,7 +107,7 @@ jobs:
           assert.ok(Array.isArray(bindings));
           const secrets=['MANAGER_OWNER_TOKEN','ROLE_INTERNAL_TOKEN','AGENT_HEALTH_URLS','AGENT_EXECUTION_URLS'];
           if(bindings.some(b=>b.name==='GITHUB_TOKEN')){assert.equal(bindings.find(b=>b.name==='GITHUB_TOKEN').type,'secret_text');secrets.push('GITHUB_TOKEN');}
-          const variables=['MODE','BUSINESS_CASES_ENABLED','SYNTHETIC_AUTOMATION_ENABLED','MANAGER_COMMANDS_ENABLED','MANAGER_THREADS_ENABLED','MANAGER_STRICT_DELIVERY_ENABLED','MANAGER_CHAT_AI_ENABLED','MANAGER_CHAT_FREE_CONFIRMED','MANAGER_CHAT_MODEL','HQ_BUILD_ID'];
+          const variables=['MODE','BUSINESS_CASES_ENABLED','SYNTHETIC_AUTOMATION_ENABLED','MANAGER_COMMANDS_ENABLED','MANAGER_THREADS_ENABLED','MANAGER_STRICT_DELIVERY_ENABLED','MANAGER_CHAT_AI_ENABLED','MANAGER_CHAT_FREE_CONFIRMED','MANAGER_CHAT_MODEL','MANAGER_BROWSER_FREE_CONFIRMED','HQ_BUILD_ID'];
           const services=ROLES.map(role=>({binding:'ROLE_'+role.toUpperCase().replace(/-/g,'_'),service:'mapleweb-role-'+role+'-staging'}));
           for(const name of secrets)assert.equal(bindings.find(b=>b.name===name)?.type,'secret_text','Missing required secret '+name);
           const d1=bindings.find(b=>b.name==='DB');
@@ -119,16 +122,17 @@ jobs:
             (b.type==='plain_text'&&variables.includes(b.name))||
             (b.type==='d1'&&b.name==='DB')||
             (b.type==='service'&&services.some(s=>s.binding===b.name))||
-            (b.type==='ai'&&b.name==='AI'),
+            (b.type==='ai'&&b.name==='AI')||
+            (b.type==='browser'&&b.name==='BROWSER'),
             'Unexpected existing binding '+b.name+' ('+b.type+'); refusing overwrite');
           const currentVars=Object.fromEntries(bindings.filter(b=>b.type==='plain_text').map(b=>[b.name,b.text]));
           assert.equal(currentVars.MODE,'staging');
           const cfg={name:'mapleweb-manager-v2-staging',main:'./src/worker.mjs',
             compatibility_date:live.compatibility_date||'2026-11-01',compatibility_flags:live.compatibility_flags||[],
             workers_dev:true,keep_vars:true,
-            vars:{...currentVars,HQ_BUILD_ID:process.env.GITHUB_SHA,MODE:'staging',BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',MANAGER_CHAT_AI_ENABLED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_FREE_CONFIRMED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_MODEL:'@cf/google/gemma-4-26b-a4b-it'},
+            vars:{...currentVars,HQ_BUILD_ID:process.env.GITHUB_SHA,MODE:'staging',BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',MANAGER_CHAT_AI_ENABLED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_FREE_CONFIRMED:process.env.HQ_AI_ENABLED,MANAGER_CHAT_MODEL:'@cf/google/gemma-4-26b-a4b-it',MANAGER_BROWSER_FREE_CONFIRMED:process.env.HQ_BROWSER_ENABLED},
             d1_databases:[{binding:'DB',database_name:'mapleweb-manager-staging-db',database_id:process.env.DB_ID,migrations_dir:'./migrations'}],
-            services,secrets:{required:secrets},ai:{binding:'AI'}
+            services,secrets:{required:secrets},ai:{binding:'AI'},...(process.env.HQ_BROWSER_ENABLED==='true'?{browser:{binding:'BROWSER'}}:{})
           };
           // Only version upload/deploy; no trigger/route changes.
           assert.ok(!cfg.routes&&!cfg.route&&!cfg.triggers);
@@ -160,6 +164,7 @@ jobs:
           export MAPLEWEB_EXPECTED_BUILD="$GITHUB_SHA"
           export MAPLEWEB_LIVE_TEST_AUTHORIZED=true
           export MAPLEWEB_AI_TEST_AUTHORIZED="$ai_enabled"
+          export MAPLEWEB_BROWSER_TEST_AUTHORIZED="$browser_enabled"
           rc=0
           node tools/live-owner-acceptance.mjs || rc=$?
           if [ "$rc" != 0 ] && [ "$rc" != 2 ] && [ "$rc" != 3 ]; then rollback; exit 1; fi
