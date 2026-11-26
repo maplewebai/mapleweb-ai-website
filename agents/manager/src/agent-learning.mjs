@@ -5,7 +5,21 @@ export async function learningNotes(env,scope,limit=20){
  const r=await requireDb(env).prepare('SELECT id,note FROM agent_learning WHERE scope=? ORDER BY created_at DESC,id DESC LIMIT ?').bind(scope,limit).all();
  return r.results||[];
 }
+// Retrieve bounded verified past outcomes. No model-generated facts or permissions.
+export async function learningWorkHistory(env,scope){
+ if(env.MANAGER_COMMANDS_ENABLED!=='true')return [];
+ const db=requireDb(env);
+ const fields='c.role,c.action,c.state,c.result_status,c.updated_at';
+ let statement;
+ if(scope==='manager')statement=db.prepare('SELECT '+fields+' FROM manager_commands c WHERE c.state IN (\'COMPLETED\',\'FAILED_OR_UNCERTAIN\') ORDER BY c.updated_at DESC LIMIT 8');
+ else if(scope.startsWith('role:'))statement=db.prepare('SELECT '+fields+' FROM manager_commands c WHERE c.role=? AND c.state IN (\'COMPLETED\',\'FAILED_OR_UNCERTAIN\') ORDER BY c.updated_at DESC LIMIT 8').bind(scope.slice(5));
+ else if(scope.startsWith('custom:'))statement=db.prepare('SELECT '+fields+' FROM manager_custom_agent_tasks t JOIN manager_commands c ON c.id=t.command_id WHERE t.agent_id=? AND c.state IN (\'COMPLETED\',\'FAILED_OR_UNCERTAIN\') ORDER BY c.updated_at DESC LIMIT 8').bind(scope.slice(7));
+ else return [];
+ const r=await statement.all();return (r.results||[]).map(x=>({role:x.role,action:x.action,state:x.state,result:String(x.result_status||'No recorded outcome').slice(0,220),date:x.updated_at}));
+}
 export async function learningInstruction(env,scope,message){
+ const review=/^(?:review (?:your )?(?:past work|work history)|learn from (?:your )?(?:past work|tasks|mistakes))[?.!]*$/i.test(message);
+ if(review){const history=await learningWorkHistory(env,scope);return {reply:history.length?'Recorded work outcomes for learning (not model retraining):\n'+history.map(h=>h.role+' / '+h.action+' — '+h.state+' — '+h.result).join('\n')+'\nUse failures or uncertain outcomes to identify what needs verification; never assume successful delivery. You can teach me a specific improvement using Remember:.':'No completed or uncertain task records are available for this agent yet.',recordMessage:'Review past work'};}
  const add=message.match(/^(?:remember|learn|teach(?: you)?):\s*([\s\S]+)$/i);
  const list=/^(?:show (?:your )?(?:learning|memory|learned instructions)|what have you learned)[?.!]*$/i.test(message);
  const forget=message.match(/^forget (?:lesson )?([0-9a-f-]{36})[.!]?$/i);
