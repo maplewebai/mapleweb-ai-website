@@ -23,6 +23,7 @@ import {parsePrivateOrderQueueQuery,listPrivateFictionalOrders} from './private-
 import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,ownerJobResult} from './website-delivery-policy.mjs';
+import {listCustomAgents,createCustomAgent,customWorkspace,customMessage,customTask} from './custom-agents.mjs';
 import {agentWorkspace,agentMessage,agentTask} from './agent-workspace.mjs';
 import {serveControlCenter} from './control-center.mjs';
 import {controlAsset} from './control-install.mjs';
@@ -55,6 +56,16 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/custom-agents'&&request.method==='GET')return json(await listCustomAgents(env));
+  if(path==='/api/custom-agents'&&request.method==='POST')return json(await createCustomAgent(env,await readJson(request,7000)),201);
+  const customPath=path.match(/^\/api\/custom-agents\/([0-9a-f-]{36})\/(workspace|chat|tasks)$/);
+  if(customPath){
+    const [,id,operation]=customPath;
+    if(operation==='workspace'&&request.method==='GET')return json(await customWorkspace(env,id));
+    if(operation==='chat'&&request.method==='POST')return json(await customMessage(env,id,await readJson(request,3800)),201);
+    if(operation==='tasks'&&request.method==='POST')return json(await customTask(env,id,await readJson(request,2400)),201);
+    return methodError();
+  }
   const agentPath=path.match(/^\/api\/agents\/([a-z-]+)\/(workspace|chat|tasks)$/);
   if(agentPath){
     const [,role,operation]=agentPath;
