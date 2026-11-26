@@ -24,6 +24,7 @@ import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,ownerJobResult} from './website-delivery-policy.mjs';
 import {listCustomAgents,createCustomAgent,customWorkspace,customMessage,customTask} from './custom-agents.mjs';
+import {supervisionDirectory,supervisorInstruction} from './manager-supervision.mjs';
 import {agentWorkspace,agentMessage,agentTask} from './agent-workspace.mjs';
 import {serveControlCenter} from './control-center.mjs';
 import {mailDirectory,internalMail,sendInternalMail,markInternalRead} from './internal-mail.mjs';
@@ -103,6 +104,7 @@ export async function handle(request,env,callingFetchImpl=fetch){
     if(operation==='tasks'&&request.method==='POST')return json(await agentTask(env,role,await readJson(request,2400)),201);
     return methodError();
   }
+  if(path==='/api/manager/supervision'&&request.method==='GET')return json(await supervisionDirectory(env));
   if(path==='/api/manager/model'&&request.method==='GET')return json(managerModelReadiness(env));
   if(path==='/api/manager/quota'&&request.method==='GET')return json(await managerQuota(env));
   if(path==='/api/manager/chat'&&request.method==='GET')return json(await chatHistory(env,u.searchParams.get('threadId')));
@@ -110,6 +112,12 @@ export async function handle(request,env,callingFetchImpl=fetch){
     const payload=await readJson(request,3800);
     const message=parseMessage(payload);
     if(payload.threadId!==undefined)await requireThread(env,payload.threadId);
+    const supervised=await supervisorInstruction(env,message,{dispatch:handle});
+    if(supervised){
+      const createdAt=new Date().toISOString();
+      await saveChatTurn(env,{message,reply:supervised.reply,kind:'verified-record',createdAt,threadId:payload.threadId??null});
+      return json({message,kind:'verified-record',created_at:createdAt,jobExecuted:false,...supervised},201);
+    }
     const exact=parseCommand(message);
     const natural=exact?null:(await resolveProjectRequest(env,message)||interpretOwnerTask(message));
     const command=exact||natural?.command;
