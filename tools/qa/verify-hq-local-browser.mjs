@@ -19,7 +19,7 @@ function localEnv(){
  const env={MODE:'staging',MANAGER_OWNER_TOKEN:token,ROLE_INTERNAL_TOKEN:roleToken,
    BUSINESS_CASES_ENABLED:'true',MANAGER_COMMANDS_ENABLED:'true',
    MANAGER_THREADS_ENABLED:'true',MANAGER_STRICT_DELIVERY_ENABLED:'true',
-   DB:{prepare(sql){let args=[];return {
+   DB:{batch(statements){db.exec('BEGIN');try{const results=statements.map(st=>st.run());db.exec('COMMIT');return results}catch(e){db.exec('ROLLBACK');throw e}},prepare(sql){let args=[];return {
      bind(...values){args=values;return this},
      first(){return db.prepare(sql).get(...args)||null},
      all(){return {results:db.prepare(sql).all(...args)}},
@@ -159,6 +159,30 @@ try{
     const workspaceResult=await page.evaluate(async tok=>(await fetch('/api/agents/website-developer/workspace',{headers:{authorization:'Bearer '+tok}})).json(),token);
     assert.ok(workspaceResult.jobs.every(j=>j.role==='website-developer'&&!Object.hasOwn(j,'result_json')));
     assert.ok(workspaceResult.turns.some(t=>t.message.includes('Fictional bookstore')));
+    await click('#agentBack');
+    await click('#createAgentOpen');
+    await page.locator('#newAgentName').fill('QA Research Assistant');
+    await page.locator('#newAgentDescription').fill('Prepare fictional research plans');
+    await page.locator('#newAgentInstructions').fill('Use concise bullet points');
+    await page.locator('#newAgentRole').selectOption('research');
+    await click('#createAgentSubmit');
+    await text('#workspaceName','QA Research Assistant');
+    await text('#workspaceStatus','Records checked');
+    await click('#agentAskStatus');
+    await text('#agentTurns','Uses research worker');
+    await click('[data-agent-pane="agentAssignPane"]');
+    await page.locator('#agentProject').fill('CUSTOMQA');
+    await page.locator('#agentDetail').fill('fictional bakery');
+    await click('#agentPrepare');
+    await text('#agentAssignments','AWAITING APPROVAL');
+    page.once('dialog',d=>d.accept());
+    await page.locator('#agentAssignments .workspaceJob').filter({hasText:'CUSTOMQA'}).getByRole('button',{name:'Approve',exact:true}).click();
+    await text('#agentAssignments','RESEARCH PLAN ONLY');
+    await text('#agentJobs','CUSTOMQA');
+    await click('#agentBack');
+    await text('#customAgentCount','1 custom profiles');
+    await page.locator('#agentGrid .agent').filter({hasText:'QA Research Assistant'}).click();
+    await text('#agentTurns','Assign plan for CUSTOMQA');
     await click('#agentBack');
     await page.locator('#agentGrid .agent').filter({hasText:'Quality Checker'}).click();
     await text('#workspaceName','Quality Checker');
