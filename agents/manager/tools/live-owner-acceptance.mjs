@@ -149,6 +149,23 @@ async function main(){
    assert.equal(ws.id,profile.id);assert.ok(Array.isArray(ws.turns));assert.ok(Array.isArray(ws.tasks));
  }
  console.log('PASS: exact live Create Agent form, private profile directory and authentication; creation and dispatch tested in local browser without adding live test profiles.');
+ await req('/api/browser/status',{auth:false,expected:401});
+ const browser=await req('/api/browser/status');
+ assert.equal(browser.paidFallback,false);assert.equal(browser.authenticatedSessions,false);
+ assert.ok(markup.includes('id="browserReady"'));assert.ok(markup.includes('id="browserPageText"'));
+ if(process.env.MAPLEWEB_BROWSER_TEST_AUTHORIZED==='true'){
+   assert.equal(browser.enabled,true,'Free browser binding unavailable');
+   const conn=await req('/api/agent-connections/manager',{method:'POST',body:{synthetic:true,label:'Release acceptance public example',url:'https://example.com/',purpose:'Synthetic public browser test',accessType:'read'},expected:201});
+   try{
+     await req('/api/agent-connections/manager/'+conn.id,{method:'POST',body:{action:'approve'}});
+     const page=await req('/api/agent-connections/manager/'+conn.id+'/read',{method:'POST',body:{confirm:true}});
+     assert.equal(page.url,'https://example.com/');assert.match(page.title,/Example Domain/i);assert.match(page.text,/Example Domain/i);assert.equal(page.externalAccountAccess,false);
+     console.log('PASS: actual public browser page retrieval with owner-approved connection and no account access');
+   }finally{await req('/api/agent-connections/manager/'+conn.id,{method:'POST',body:{action:'revoke'}});}
+ }else{
+   assert.equal(browser.enabled,false);
+   console.log('NOT VERIFIED: browser provider free plan not confirmed; browser remains disabled.');
+ }
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
