@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
-import {connections,requestConnection,connectionAction} from '../src/agent-connections.mjs';
+import {connections,requestConnection,connectionAction,browsePublicPage,readApprovedPage,browserInstruction} from '../src/agent-connections.mjs';
 import worker from '../src/worker.mjs';
 function setup(t){
  const sql=new DatabaseSync(':memory:');t.after(()=>sql.close());const dir=new URL('../migrations/',import.meta.url);
@@ -39,3 +39,24 @@ test('new accounts and unsupported apps remain unconnected; reject unsafe URLs a
 });
 
 test('approved public reference verifies only permitted host with no credentials',async t=>{const env=setup(t);const a=await requestConnection(env,'manager',{...payload,url:'https://docs.github.com/en',accessType:'read'});await connectionAction(env,'manager',a.id,{action:'approve'});let calls=0;const result=await connectionAction(env,'manager',a.id,{action:'verify'},{fetcher:async(url,opts)=>{calls++;assert.equal(url,'https://docs.github.com/en');assert.equal(opts.redirect,'error');assert.equal(opts.headers.authorization,undefined);return new Response('Public reference',{headers:{'content-type':'text/html'}})}});assert.equal(calls,1);assert.equal(result.state,'VERIFIED_READ');});
+
+test('shared browser reads exact approved URL, closes session, isolates permissions and rejects failures',async t=>{
+ const env=setup(t);
+ let calls=0,closed=0;
+ env.BROWSER={script:async(code,options)=>{calls++;assert.match(code,/javaScriptEnabled:false/);assert.match(code,/maxRedirects:0/);assert.match(code,/https:\/\/example\.com\//);assert.equal(options.library,'playwright');return new Response(JSON.stringify({success:true,result:{ok:true,url:'https://example.com/',title:'Example Domain',text:'Example public content'}}),{headers:{'cf-browser-session-id':'mock-session','content-type':'application/json'}})},closeSession:async id=>{assert.equal(id,'mock-session');closed++}};
+ await assert.rejects(browsePublicPage(env,'https://example.com'),/not enabled/);
+ env.MANAGER_BROWSER_FREE_CONFIRMED='true';
+ const a=await requestConnection(env,'research',{...payload,label:'Public site',url:'https://example.com',accessType:'read'});
+ await assert.rejects(readApprovedPage(env,'research',a.id),/Approve/);
+ await connectionAction(env,'research',a.id,{action:'approve'});
+ await assert.rejects(readApprovedPage(env,'manager',a.id),/Approve/);
+ assert.equal(calls,0);
+ const turn=await browserInstruction(env,'role:research','Read website https://example.com');
+ assert.match(turn.reply,/Example public content/);
+ assert.equal(calls,1);assert.equal(closed,1);
+ assert.match((await browserInstruction(env,'manager','Read website https://example.com')).reply,/no approved/);
+ await connectionAction(env,'research',a.id,{action:'revoke'});
+ await assert.rejects(readApprovedPage(env,'research',a.id),/Approve/);
+ await assert.rejects(browsePublicPage(env,'https://something.local'),/HTTPS/);
+ assert.equal(calls,1);
+});
