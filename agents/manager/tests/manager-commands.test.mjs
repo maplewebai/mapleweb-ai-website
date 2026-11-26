@@ -8,7 +8,7 @@ const token='test-owner-'.repeat(5);
 function setup(t){
  const sql=new DatabaseSync(':memory:');
  t.after(()=>sql.close());
- for(const name of ['0001_init.sql','0004_manager_chat.sql','0005_manager_commands.sql'])sql.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+ for(const name of ['0001_init.sql','0004_manager_chat.sql','0005_manager_commands.sql','0008_custom_agents.sql'])sql.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
  return {MANAGER_COMMANDS_ENABLED:'true',MANAGER_OWNER_TOKEN:token,DB:{prepare(s){let args=[];return{
  bind(...a){args=a;return this},first(){return sql.prepare(s).get(...args)||null},
  all(){return {results:sql.prepare(s).all(...args)}},run(){return {meta:{changes:Number(sql.prepare(s).run(...args).changes)}}}
