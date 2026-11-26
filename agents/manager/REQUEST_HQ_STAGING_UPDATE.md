@@ -47,3 +47,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Retry approved Headquarters branding after the unrelated AI acceptance request timed out. Preserve all acceptance checks, give the model response a longer timeout, and use a distinct home-screen icon URL to prevent stale metadata. Staging only; no production changes or charges.
 
 - Add first-party internal agent mail (migration 0012), automatic mailbox identities, owner-authorized in-app messages, sent history, read state and chat inbox commands. No Cloudflare Email Routing, external mail, account verification, purchases or public site changes. Require local browser and live private directory acceptance.
+
+- Fix internal mailbox form intrinsic width on 320px mobile screens; repeat full acceptance without weakening layout checks.
