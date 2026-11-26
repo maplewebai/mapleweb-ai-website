@@ -49,3 +49,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - Add first-party internal agent mail (migration 0012), automatic mailbox identities, owner-authorized in-app messages, sent history, read state and chat inbox commands. No Cloudflare Email Routing, external mail, account verification, purchases or public site changes. Require local browser and live private directory acceptance.
 
 - Fix internal mailbox form intrinsic width on 320px mobile screens; repeat full acceptance without weakening layout checks.
+
+- Add Manager supervision directory, direct explicit owner-authorized internal delegation, named custom agent assignments, pause/resume controls, chat-only inbox assignment with truthful status, and live remote research verification. Preserve staging, free plan, publication and payment guards.
