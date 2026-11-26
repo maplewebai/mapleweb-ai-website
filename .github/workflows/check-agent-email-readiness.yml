@@ -1,0 +1,43 @@
+name: Check agent email provider readiness (read only)
+on:
+  push:
+    branches: [mapleweb-ai-agents]
+    paths: ['.github/workflows/check-agent-email-readiness.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.ref == 'refs/heads/mapleweb-ai-agents'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check authorized zones and routing settings without revealing domains
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EXPECTED_ACCOUNT: ${{ vars.MAPLEWEB_STAGING_CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$CF_TOKEN"
+          test "$CF_ACCOUNT" = "$EXPECTED_ACCOUNT"
+          [[ "$CF_ACCOUNT" =~ ^[a-fA-F0-9]{32}$ ]]
+          status=$(curl -sS --max-time 20 -o /tmp/zones.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/zones?account.id=$CF_ACCOUNT&per_page=50")
+          echo "Zone inventory HTTP: $status"
+          if [ "$status" != 200 ] || ! jq -e '.success == true and (.result|type=="array")' /tmp/zones.json >/dev/null; then
+            echo "Domain inventory unavailable. No DNS or email changes performed."
+            exit 0
+          fi
+          jq -r '"Accessible zones: "+(.result|length|tostring)+"; active zones: "+([.result[]|select(.status=="active")]|length|tostring)' /tmp/zones.json
+          while read -r zid; do
+            [[ "$zid" =~ ^[a-fA-F0-9]{32}$ ]] || exit 1
+            status=$(curl -sS --max-time 15 -o /tmp/routing.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/zones/$zid/email/routing")
+            if [ "$status" = 200 ] && jq -e '.success==true' /tmp/routing.json >/dev/null; then
+              jq -r '"Routing enabled: "+(.result.enabled|tostring)+"; ready: "+((.result.status=="ready")|tostring)' /tmp/routing.json
+            else
+              echo "Routing settings unavailable (HTTP $status)"
+            fi
+          done < <(jq -r '.result[]|select(.status=="active")|.id' /tmp/zones.json | head -5)
+          echo "Read-only check complete. No account, DNS, routing, or subscription changes."
