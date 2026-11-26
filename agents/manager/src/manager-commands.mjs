@@ -160,6 +160,8 @@ export async function decideCommand(env,id,payload,{dispatch,assignGitHub=assign
    return {id,state:'REJECTED'};
  }
  await requireRoleRunning(env,item.role);
+ const customAssignment=await db.prepare('SELECT agent_id FROM manager_custom_agent_tasks WHERE command_id=?').bind(id).first();
+ if(customAssignment)await requireRoleRunning(env,customAssignment.agent_id);
  if(item.role==='github'){
    if(item.action!=='create-development-task')throw bad('Unsupported GitHub task');
    if(!env.GITHUB_TOKEN)throw bad('GitHub credential not configured in Manager',503);
