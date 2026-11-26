@@ -188,6 +188,13 @@ async function main(){
  assert.equal(inbox.externalDelivery,false);assert.ok(Array.isArray(inbox.inbox));assert.ok(Array.isArray(inbox.sent));
  assert.ok(markup.includes('id="mailForm"'));assert.ok(markup.includes('id="mailInbox"'));
  console.log('PASS: live owner-only internal mail directory, Manager inbox and exact UI. Internal delivery tested in local database and browser; no live Internet mail.');
+ await req('/api/manager/supervision',{auth:false,expected:401});
+ const supervisors=await req('/api/manager/supervision');
+ assert.ok(supervisors.length>=9);assert.ok(roleNames.every(role=>supervisors.some(a=>a.id===role)));
+ const direct=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Assign Research for project '+runId+': fictional bakery'},expected:201});
+ assert.equal(direct.taskResult.state,'COMPLETED');assert.equal(direct.taskResult.resultStatus,'RESEARCH_PLAN_ONLY');assert.equal(direct.jobExecuted,true);
+ assert.ok(markup.includes('Supervise all agents'));
+ console.log('PASS: owner-only supervision directory and actual directly delegated remote research job, no second approval.');
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
