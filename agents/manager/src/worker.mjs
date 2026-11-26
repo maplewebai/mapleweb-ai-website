@@ -26,6 +26,7 @@ import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,own
 import {listCustomAgents,createCustomAgent,customWorkspace,customMessage,customTask} from './custom-agents.mjs';
 import {agentWorkspace,agentMessage,agentTask} from './agent-workspace.mjs';
 import {serveControlCenter} from './control-center.mjs';
+import {infrastructure,addDomain,planEmail} from './infrastructure.mjs';
 import {connections,requestConnection,connectionAction,readApprovedPage,browserReadiness} from './agent-connections.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness,managerQuota} from './manager-chat.mjs';
@@ -57,6 +58,9 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/infrastructure'&&request.method==='GET')return json(await infrastructure(env));
+  if(path==='/api/infrastructure/domains'&&request.method==='POST')return json(await addDomain(env,await readJson(request,600)),201);
+  if(path==='/api/infrastructure/email-plans'&&request.method==='POST')return json(await planEmail(env,await readJson(request,900)),201);
   if(path==='/api/browser/status'&&request.method==='GET')return json(browserReadiness(env));
   const browserPath=path.match(/^\/api\/agent-connections\/([a-z0-9-]{1,36})\/([a-f0-9-]{36})\/read$/);
   if(browserPath&&request.method==='POST'){
