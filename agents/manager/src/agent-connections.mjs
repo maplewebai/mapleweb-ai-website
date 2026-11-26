@@ -38,7 +38,8 @@ export async function connectionAction(env,id,cid,p,{diagnose=diagnoseGitHub}={}
  else{
    if(!['APPROVED','VERIFIED_READ'].includes(state))throw bad('Approve the request first',409);
    // Only the fixed existing GitHub adapter can make authenticated requests.
-   if(new URL(row.url).hostname==='github.com'&&row.access_type!=='new-account'){
+   const u=new URL(row.url);
+   if(u.hostname==='github.com'&&['/','/maplewebai/mapleweb-ai-website','/maplewebai/mapleweb-ai-website/'].includes(u.pathname)&&row.access_type!=='new-account'){
      try{const g=await diagnose(env);if(g.configured&&g.authenticatedReadVerified&&g.branchFound){state='VERIFIED_READ';result='Manager GitHub adapter verified read access to its fixed development repository. No independent account or write access granted.';}else{state='APPROVED';result='GitHub Manager credential is not connected or read access was not verified.';}}catch{state='APPROVED';result='GitHub read verification failed. No connection claimed.';}
    }else{state='APPROVED';result='This service has no live adapter in MapleWeb. Owner may open the site to sign in or register. No external account created.';}
  }
