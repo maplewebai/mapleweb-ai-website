@@ -240,6 +240,17 @@ try{
     page.once('dialog',d=>d.accept());
     await click('#businessQuote');
     await text('#businessStage','unsent quote CAD 650');
+    await click('[data-tab="infrastructure"]');
+    await text('#cloudStatus','Private configuration records loaded');
+    await page.locator('#cloudDomain').fill('example.com');
+    await click('#cloudAddDomain');
+    await text('#cloudDomains','example.com');
+    await page.locator('#cloudAgent').selectOption('manager');
+    await click('#cloudPlanEmail');
+    await text('#cloudEmails','manager@example.com');
+    await text('#cloudEmails','not an active email address');
+    const cloudLayout=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
+    assert.ok(cloudLayout.scroll<=cloudLayout.width+1,'Cloud layout overflow '+JSON.stringify(cloudLayout));
     await click('[data-tab="manager"]');
     const d=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
     assert.ok(d.scroll<=d.width+1,'Layout overflow '+JSON.stringify(d));
