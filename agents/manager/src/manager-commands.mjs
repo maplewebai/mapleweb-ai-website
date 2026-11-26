@@ -126,10 +126,11 @@ export async function listCommands(env){
  const roles=await db.prepare('SELECT role,paused FROM manager_role_controls').all();
  return {tasks:(tasks.results||[]).map(({input_json,...task})=>({...task,...(task.role==='github'?{instruction:JSON.parse(input_json).instruction}:['manager','website-developer','research','sales'].includes(task.role)?{detail:((i)=>i.description||i.sector||(i.tier?'Tier '+i.tier:null))(JSON.parse(input_json))}:{})})),roles:['manager',...ROLES,'github'].map(role=>({role,paused:(roles.results||[]).some(r=>r.role===role&&r.paused===1)})),mode:'staging'};
 }
-export async function proposeCommand(env,command){
+export async function proposeCommand(env,command,{customAgentId=null}={}){
  const db=enabled(env);
  const id=crypto.randomUUID(),time=now();
- const write=await db.prepare('INSERT INTO manager_commands(id,role,action,project_id,input_json,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,command.role,command.action,command.projectId,JSON.stringify(command.input),'AWAITING_APPROVAL',time,time).run();
+ const insert=db.prepare('INSERT INTO manager_commands(id,role,action,project_id,input_json,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,command.role,command.action,command.projectId,JSON.stringify(command.input),'AWAITING_APPROVAL',time,time);
+ const write=customAgentId?(await db.batch([insert,db.prepare('INSERT INTO manager_custom_agent_tasks(agent_id,command_id) VALUES(?,?)').bind(customAgentId,id)]))[0]:await insert.run();
  if(write.meta?.changes!==1)throw bad('Task write not confirmed',503);
  const saved=await db.prepare('SELECT id,state FROM manager_commands WHERE id=?').bind(id).first();
  if(saved?.id!==id||saved.state!=='AWAITING_APPROVAL')throw bad('Task readback not confirmed',503);
