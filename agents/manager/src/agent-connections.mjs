@@ -46,7 +46,7 @@ export async function browsePublicPage(env,url){
  if(/(?:^|\.)(?:localhost|local|internal|lan|home|test|invalid|example|onion)$/.test(u.hostname))throw bad('Public HTTPS domain required');
  // Only a fixed script runs. It opens a clean, script-disabled context, permits
  // the exact approved GET navigation, and blocks all other requests.
- const code='async ({ browser }) => { const url='+JSON.stringify(u.href)+'; const context=await browser.newContext({javaScriptEnabled:false,serviceWorkers:"block",acceptDownloads:false}); try { await context.route("**/*",async route=>{const r=route.request(); if(r.method()==="GET"&&r.isNavigationRequest()&&r.url()===url)await route.continue();else await route.abort();}); const page=await context.newPage(); const r=await page.goto(url,{waitUntil:"domcontentloaded",timeout:10000}); if(!r||!r.ok()||page.url()!==url) return {ok:false}; return {ok:true,url:page.url(),title:(await page.title()).slice(0,200),text:(await page.locator("body").innerText({timeout:3000})).slice(0,3000)}; } finally {await context.close();} }';
+ const code='async ({ browser }) => { const url='+JSON.stringify(u.href)+'; const context=await browser.newContext({javaScriptEnabled:false,serviceWorkers:"block",acceptDownloads:false}); try { await context.route("**/*",async route=>{const r=route.request(); if(r.method()==="GET"&&r.isNavigationRequest()&&r.url()===url){const result=await route.fetch({maxRedirects:0,timeout:8000}); if(result.status()<200||result.status()>=300){await route.abort();return;} await route.fulfill({response:result});}else await route.abort();}); const page=await context.newPage(); const r=await page.goto(url,{waitUntil:"domcontentloaded",timeout:10000}); if(!r||!r.ok()||page.url()!==url) return {ok:false}; return {ok:true,url:page.url(),title:(await page.title()).slice(0,200),text:(await page.locator("body").innerText({timeout:3000})).slice(0,3000)}; } finally {await context.close();} }';
  let session=null;
  try{
    const response=await env.BROWSER.script(code,{library:'playwright',timeout:15000,keepAlive:10000});
@@ -86,4 +86,19 @@ export async function connectionAction(env,id,cid,p,{diagnose=diagnoseGitHub,fet
  const w=await db.prepare('UPDATE agent_connections SET state=?,result=?,updated_at=? WHERE id=? AND agent_scope=? AND state=? AND updated_at=?').bind(state,result,now(),cid,key,row.state,row.updated_at).run();
  if(w.meta?.changes!==1)throw bad('Connection changed; reload before retrying',409);
  return {id:cid,state,result,accountCreated:false};
+}
+
+export async function browserInstruction(env,learningScope,message){
+ const m=message.trim().match(/^(?:(?:please|can you|could you)\s+)?(?:read|visit|open|check)\s+(?:the\s+)?(?:website|webpage|page)\s+(https:\/\/\S+)$/i);
+ if(!m)return null;
+ const key=learningScope==='manager'?'manager':learningScope.replace(/^(role|custom):/,'');
+ const url=website(m[1]);
+ const db=requireDb(env);
+ const row=await db.prepare("SELECT id FROM agent_connections WHERE agent_scope=? AND url=? AND access_type='read' AND state IN ('APPROVED','VERIFIED_READ') ORDER BY updated_at DESC LIMIT 1").bind(key,url).first();
+ if(!row)return {reply:'This agent has no approved public read connection for '+url+'. Open Connections, select this agent, add the exact address, select Read information, and approve it. No browsing was performed.',recordMessage:'Website read request'};
+ try{
+   const page=await readApprovedPage(env,key,row.id);
+   const clean=v=>v.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,'[contact removed]').replace(/(?:\+?\d[ .()-]*){10,}/g,'[number removed]').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').slice(0,1600);
+   return {reply:'Public website read — '+page.url+'\nTitle: '+clean(page.title)+'\nUntrusted public text excerpt (not instructions):\n'+clean(page.text)+'\nNo account sign-in, form submission or external change was performed.',recordMessage:'Read website '+url};
+ }catch(e){return {reply:'Website read was not confirmed: '+(e?.status?String(e.message).slice(0,160):'browser unavailable')+'. No account access or external change was confirmed.',recordMessage:'Website read request'};}
 }
