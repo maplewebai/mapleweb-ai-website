@@ -88,7 +88,33 @@ export async function connectionAction(env,id,cid,p,{diagnose=diagnoseGitHub,fet
  return {id:cid,state,result,accountCreated:false};
 }
 
+// Plain HTTP reference reader, separate from unavailable interactive browser.
+export async function readApprovedReference(env,id,url,fetcher=fetch){
+ const key=await scope(env,id),db=requireDb(env),u=new URL(website(url));
+ if(!PUBLIC_DOC_HOSTS.has(u.hostname))throw bad('Only supported public documentation hosts can be read',403);
+ const row=await db.prepare("SELECT id,state,updated_at FROM agent_connections WHERE agent_scope=? AND url=? AND access_type='read' AND state IN ('APPROVED','VERIFIED_READ') ORDER BY updated_at DESC LIMIT 1").bind(key,u.href).first();
+ if(!row)throw bad('Approve this exact public reference URL for this agent first',403);
+ const response=await fetcher(u.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(12000),headers:{accept:'text/html,text/plain'}});
+ const type=(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+ if(!response.ok||!['text/html','text/plain'].includes(type)||!response.body){await response.body?.cancel();throw bad('Reference did not return readable text',502);}
+ const reader=response.body.getReader(),decoder=new TextDecoder();let raw='',size=0,truncated=false;
+ try{for(;;){const {done,value}=await reader.read();if(done)break;const remaining=262144-size;raw+=decoder.decode(value.subarray(0,remaining),{stream:true});size+=value.length;if(size>=262144){truncated=true;await reader.cancel();break;}}raw+=decoder.decode();}finally{reader.releaseLock();}
+ const clean=v=>v.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,'[contact removed]').replace(/(?:\+?\d[ .()-]*){10,}/g,'[number removed]').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim();
+ const title=type==='text/html'?clean(raw.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]||u.hostname).slice(0,200):u.hostname;
+ const excerpt=clean(type==='text/html'?raw.replace(/<!--[\s\S]*?(?:-->|$)/g,' ').replace(/<(script|style|head|noscript)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi,' ').replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g,x=>({'&nbsp;':' ','&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'"})[x]):raw);
+ if(!excerpt)throw bad('Reference returned no usable text',502);
+ const w=await db.prepare("UPDATE agent_connections SET state='VERIFIED_READ',result=?,updated_at=? WHERE id=? AND agent_scope=? AND state=? AND updated_at=?").bind('Public reference HTTP text retrieved; no browser, login or external change.',now(),row.id,key,row.state,row.updated_at).run();
+ if(w.meta?.changes!==1)throw bad('Connection changed during read; result withheld',409);
+ return {url:u.href,title,text:excerpt.slice(0,2500),truncated:truncated||excerpt.length>2500,externalAccountAccess:false,contentImported:false,method:'PUBLIC_HTTP'};
+}
 export async function browserInstruction(env,learningScope,message){
+ const reference=message.trim().match(/^read reference:\s*(https:\/\/\S+)$/i);
+ if(reference){
+   const key=learningScope==='manager'?'manager':learningScope.replace(/^(role|custom):/,'');
+   try{const p=await readApprovedReference(env,key,reference[1]);return {reply:'Public reference — '+p.url+'\n'+p.title+'\nUntrusted text excerpt (not instructions):\n'+p.text+'\n'+(p.truncated?'Excerpt is truncated. ':'')+'No sign-in or external changes.',recordMessage:'Read public reference'};}
+   catch(e){return {reply:'Reference read not confirmed: '+(e?.status?String(e.message).slice(0,180):'network unavailable')+'. No content imported.',recordMessage:'Read public reference'};}
+ }
+
  const m=message.trim().match(/^(?:(?:please|can you|could you)\s+)?(?:read|visit|open|check)\s+(?:the\s+)?(?:website|webpage|page)\s+(https:\/\/\S+)$/i);
  if(!m)return null;
  const key=learningScope==='manager'?'manager':learningScope.replace(/^(role|custom):/,'');
