@@ -37,3 +37,5 @@ test('new accounts and unsupported apps remain unconnected; reject unsafe URLs a
    assert.equal(r.state,'APPROVED');assert.equal(r.accountCreated,false);
  }
 });
+
+test('approved public reference verifies only permitted host with no credentials',async t=>{const env=setup(t);const a=await requestConnection(env,'manager',{...payload,url:'https://docs.github.com/en',accessType:'read'});await connectionAction(env,'manager',a.id,{action:'approve'});let calls=0;const result=await connectionAction(env,'manager',a.id,{action:'verify'},{fetcher:async(url,opts)=>{calls++;assert.equal(url,'https://docs.github.com/en');assert.equal(opts.redirect,'error');assert.equal(opts.headers.authorization,undefined);return new Response('Public reference',{headers:{'content-type':'text/html'}})}});assert.equal(calls,1);assert.equal(result.state,'VERIFIED_READ');});
