@@ -38,6 +38,34 @@ export async function verifyPublicReference(url,fetcher=fetch){
  if(response.body)await response.body.cancel();
  return response.ok&&['text/html','text/plain'].includes(type);
 }
+// All agents share one read-only browser. The owner approves the exact URL.
+export function browserReadiness(env){return {enabled:env.MANAGER_BROWSER_FREE_CONFIRMED==='true'&&typeof env.BROWSER?.script==='function'&&typeof env.BROWSER?.closeSession==='function',paidFallback:false,publicReadOnly:true,authenticatedSessions:false};}
+export async function browsePublicPage(env,url){
+ if(!browserReadiness(env).enabled)throw bad('Free browser connection is not enabled',503);
+ const u=new URL(website(url));
+ if(/(?:^|\.)(?:localhost|local|internal|lan|home|test|invalid|example|onion)$/.test(u.hostname))throw bad('Public HTTPS domain required');
+ // Only a fixed script runs. It opens a clean, script-disabled context, permits
+ // the exact approved GET navigation, and blocks all other requests.
+ const code='async ({ browser }) => { const url='+JSON.stringify(u.href)+'; const context=await browser.newContext({javaScriptEnabled:false,serviceWorkers:"block",acceptDownloads:false}); try { await context.route("**/*",async route=>{const r=route.request(); if(r.method()==="GET"&&r.isNavigationRequest()&&r.url()===url)await route.continue();else await route.abort();}); const page=await context.newPage(); const r=await page.goto(url,{waitUntil:"domcontentloaded",timeout:10000}); if(!r||!r.ok()||page.url()!==url) return {ok:false}; return {ok:true,url:page.url(),title:(await page.title()).slice(0,200),text:(await page.locator("body").innerText({timeout:3000})).slice(0,3000)}; } finally {await context.close();} }';
+ let session=null;
+ try{
+   const response=await env.BROWSER.script(code,{library:'playwright',timeout:15000,keepAlive:10000});
+   session=response.headers.get('cf-browser-session-id');
+   if(!response.ok)throw bad(response.status===429?'Free browser allowance or rate limit reached':'Browser service did not confirm the read',503);
+   const data=await response.json();
+   if(data.success!==true||data.result?.ok!==true||data.result.url!==u.href||typeof data.result.text!=='string'||typeof data.result.title!=='string'||!data.result.text.trim())throw bad('Public page was blocked, redirected or did not return readable text',502);
+   return {url:u.href,title:data.result.title.slice(0,200),text:data.result.text.slice(0,3000)};
+ }finally{if(session)await env.BROWSER.closeSession(session).catch(()=>{});}
+}
+export async function readApprovedPage(env,id,cid){
+ const key=await scope(env,id),db=requireDb(env);
+ const row=await db.prepare('SELECT * FROM agent_connections WHERE id=? AND agent_scope=?').bind(cid,key).first();
+ if(!row||row.access_type!=='read'||!['APPROVED','VERIFIED_READ'].includes(row.state))throw bad('Approve a public read connection for this agent first',403);
+ const page=await browsePublicPage(env,row.url);
+ const w=await db.prepare("UPDATE agent_connections SET state='VERIFIED_READ',result=?,updated_at=? WHERE id=? AND agent_scope=? AND state=? AND updated_at=?").bind('Public browser text retrieved; no login or external account action.',now(),cid,key,row.state,row.updated_at).run();
+ if(w.meta?.changes!==1)throw bad('Connection changed during the read; result withheld',409);
+ return {...page,externalAccountAccess:false,contentImported:false};
+}
 export async function connectionAction(env,id,cid,p,{diagnose=diagnoseGitHub,fetcher=fetch}={}){
  const key=await scope(env,id),db=requireDb(env);
  if(!p||Object.keys(p).length!==1||!['approve','revoke','verify'].includes(p.action))throw bad('Invalid connection action');
