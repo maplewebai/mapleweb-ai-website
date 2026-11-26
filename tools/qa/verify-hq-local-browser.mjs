@@ -244,6 +244,18 @@ try{
     await click('#businessQuote');
     await text('#businessStage','unsent quote CAD 650');
     await click('[data-tab="infrastructure"]');
+    await text('#mailStatus','Internal mailbox loaded');
+    await page.locator('#mailAgent').selectOption('manager');
+    await page.locator('#mailRecipient').selectOption('research');
+    await page.locator('#mailSubject').fill('Fictional internal update');
+    await page.locator('#mailBody').fill('Please review the draft.');
+    await click('#mailSend');
+    await text('#mailSent','Fictional internal update');
+    await page.locator('#mailAgent').selectOption('research');
+    await text('#mailInbox','Please review the draft.');
+    await page.locator('#mailInbox').getByRole('button',{name:'Mark read',exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('#mailInbox').textContent.includes('Unread'));
+    await click('#infrastructure details summary');
     await text('#cloudStatus','Private configuration records loaded');
     await page.locator('#cloudDomain').fill('example.com');
     await click('#cloudAddDomain');
