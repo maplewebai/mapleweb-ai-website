@@ -39,3 +39,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Verify and deploy private per-agent connection requests, owner approval/revocation, existing GitHub read diagnostics, selected public-documentation HTTP checks, and scoped past-work learning. Apply migration 0010. No external account creation, paid services, customer publication or arbitrary browser automation enabled.
 
 - 2026-11-25: Validate and deploy shared read-only Browser Run access for all existing and custom agents. Require current confirmed free plan, exact approved public URL, clean session, no redirects, no credentials, and a successful actual public page acceptance test. No paid fallback, third-party account creation, private login or external changes.
+
+- 2026-11-25: Validate and deploy Cloud & Email panel with private domain and unique agent address plans, service readiness and migration 0011. Verify responsive UI and owner-only records. No live DNS, email routing, inboxes, paid services or external signup. Keep browser disabled after prior live HTTP 503 until separately verified.
