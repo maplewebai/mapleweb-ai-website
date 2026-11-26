@@ -1,4 +1,5 @@
 // Owner-only Manager conversation. Real D1 records, no invented execution.
+import {mailInstruction} from './internal-mail.mjs';
 import {browserInstruction} from './agent-connections.mjs';
 import {learningNotes,learningInstruction,learningWorkHistory} from './agent-learning.mjs';
 import {bad,validateSynthetic} from './security.mjs';
@@ -78,7 +79,7 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
   const db=requireDb(env);
   const intent=agentRole?'advice':classifyMessage(message);
   let reply,kind='verified-record',aiFailure=null;
-  const lesson=await learningInstruction(env,learningScope,message)||await browserInstruction(env,learningScope,message);
+  const lesson=await mailInstruction(env,learningScope,message)||await learningInstruction(env,learningScope,message)||await browserInstruction(env,learningScope,message);
   if(lesson){
     const createdAt=new Date().toISOString();
     await saveChatTurn(env,{message:lesson.recordMessage||message,reply:lesson.reply,kind,createdAt,threadId});
