@@ -8,8 +8,8 @@ assert.match(expectedBuild||'',/^[a-f0-9]{40}$/,'Expected exact staging build re
 assert.ok(token&&token.length>=32,'Provide existing owner token via environment, never command arguments');
 assert.equal(process.env.MAPLEWEB_LIVE_TEST_AUTHORIZED,'true','Explicit isolated live-test permission required');
 const runId='QA'+crypto.randomUUID().replace(/-/g,'').slice(0,20).replace(/[0-9]/g,d=>String.fromCharCode(65+Number(d))).toUpperCase();
-async function req(path,{method='GET',body,auth=true,expected=200}={}){
- const r=await fetch(base+path,{method,redirect:'error',signal:AbortSignal.timeout(45000),headers:{...(auth?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+async function req(path,{method='GET',body,auth=true,expected=200,timeoutMs=45000}={}){
+ const r=await fetch(base+path,{method,redirect:'error',signal:AbortSignal.timeout(timeoutMs),headers:{...(auth?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  assert.equal(r.headers.get('X-MapleWeb-Build'),expectedBuild,'Response came from unexpected staging build; stop without retrying mutations');
  const data=await r.json().catch(()=>null);
  if(r.status!==expected){
@@ -183,7 +183,7 @@ async function main(){
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
   assert.equal(model.enabled,true,'Free-model binding not enabled');
-  const ai=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Suggest three improvements for a fictional bakery website.'},expected:201});
+  const ai=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Suggest three improvements for a fictional bakery website.'},expected:201,timeoutMs:120000});
   if(ai.kind==='unavailable'&&ai.aiFailure==='PROVIDER_3036'){
    const after=await req('/api/manager/quota');
    assert.equal(after.cap,null);assert.equal(ai.jobExecuted,false);assert.match(ai.reply,/free AI compute allowance is exhausted/);
