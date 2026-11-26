@@ -3,7 +3,7 @@ import {ROLES} from './roles.mjs';
 import {bad,validateSynthetic,idIsSafe} from './security.mjs';
 import {requireDb} from './store.mjs';
 import {chatHistory,saveChatTurn,managerChat,parseMessage} from './manager-chat.mjs';
-import {parseCommand,proposeCommand} from './manager-commands.mjs';
+import {parseCommand,interpretOwnerTask,resolveProjectRequest,proposeCommand} from './manager-commands.mjs';
 
 function context(env,role){
  if(!ROLES.includes(role))throw bad('Unknown agent role',404);
@@ -37,9 +37,11 @@ export async function agentMessage(env,role,payload){
  const message=parseMessage(payload);
  const {id}=await ensureThread(env,role);
  const normalized=message.toLowerCase().trim().replace(/[?.!]+$/,'');
- const command=parseCommand(message);
+ const exact=parseCommand(message),natural=exact?null:(await resolveProjectRequest(env,message)||interpretOwnerTask(message));
+ const command=exact||natural?.command;
+ if(natural?.reply)return record(env,id,message,natural.reply);
  if(command){
-   if(command.role!==role)throw bad('Assign tasks only to the selected agent');
+   if(command.role!==role)return record(env,id,message,'This agent cannot execute that task type. Ask the Manager or appropriate agent. No task was started.');
    const proposal=await proposeCommand(env,command);
    return record(env,id,message,'Task saved for owner approval. Nothing has been executed. Review the task below.',{proposal});
  }
@@ -50,7 +52,7 @@ export async function agentMessage(env,role,payload){
    return record(env,id,message,'Verified '+role+' records. New dispatch '+(data.paused?'paused':'allowed')+'.\nRecent assignments:\n'+(lines.join('\n')||'None')+'\nRecent job results:\n'+(jobs.join('\n')||'None')+'\nThese are stored records, not a live activity timer.');
  }
  // Advice uses the existing shared quota and isolated role history. No tools.
- return managerChat(env,{synthetic:true,message,threadId:id},{agentRole:role});
+ return managerChat(env,{synthetic:true,message,threadId:id},{agentRole:role,learningScope:'role:'+role});
 }
 export function buildAgentCommand(role,payload){
  validateSynthetic(payload);
