@@ -43,3 +43,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Validate and deploy Cloud & Email panel with private domain and unique agent address plans, service readiness and migration 0011. Verify responsive UI and owner-only records. No live DNS, email routing, inboxes, paid services or external signup. Keep browser disabled after prior live HTTP 503 until separately verified.
 
 - 2026-11-25: Validate and deploy approved AI Agents Headquarters name, exact logo derivative, app manifest and responsive sign-in/dashboard branding. Existing staging services and permissions unchanged. No public website, production deployment, or billing changes.
+
+- 2026-11-25: Retry approved Headquarters branding after the unrelated AI acceptance request timed out. Preserve all acceptance checks, give the model response a longer timeout, and use a distinct home-screen icon URL to prevent stale metadata. Staging only; no production changes or charges.
