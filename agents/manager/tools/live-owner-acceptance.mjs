@@ -138,6 +138,17 @@ async function main(){
  const after=await req('/api/projects/'+existingId);
  assert.equal(after.project.version,before.project.version);
  console.log('PASS: named project status, owner-approved structural QA and unchanged existing draft version');
+ // Verify custom profile endpoints without adding test profiles to the owner's directory.
+ await req('/api/custom-agents',{auth:false,expected:401});
+ await req('/api/custom-agents',{method:'POST',auth:false,body:{synthetic:true,name:'Unauthorized QA profile',description:'Fictional test',instructions:'',baseRole:'chat-only'},expected:401});
+ const profiles=await req('/api/custom-agents');
+ assert.ok(Array.isArray(profiles.agents));assert.equal(profiles.limit,50);
+ assert.ok(markup.includes('id="createAgentOpen"'));assert.ok(markup.includes('id="createAgentForm"'));
+ for(const profile of profiles.agents.slice(0,3)){
+   const ws=await req('/api/custom-agents/'+profile.id+'/workspace');
+   assert.equal(ws.id,profile.id);assert.ok(Array.isArray(ws.turns));assert.ok(Array.isArray(ws.tasks));
+ }
+ console.log('PASS: exact live Create Agent form, private profile directory and authentication; creation and dispatch tested in local browser without adding live test profiles.');
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
