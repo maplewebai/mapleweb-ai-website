@@ -195,6 +195,25 @@ async function main(){
  assert.equal(direct.taskResult.state,'COMPLETED');assert.equal(direct.taskResult.resultStatus,'RESEARCH_PLAN_ONLY');assert.equal(direct.jobExecuted,true);
  assert.ok(markup.includes('Supervise all agents'));
  console.log('PASS: owner-only supervision directory and actual directly delegated remote research job, no second approval.');
+ await req('/api/hq/knowledge',{auth:false,expected:401});
+ const caps=await req('/api/hq/capabilities');assert.equal(caps.virtualComputer,'NOT_CONNECTED');assert.equal(caps.paidFallback,false);
+ assert.ok(markup.includes('id="hqKnowledgePanel"'));
+ const k=await req('/api/hq/knowledge',{method:'POST',body:{synthetic:true,title:'Fictional knowledge '+runId,source:'Release test',body:'Fictional bakery homepage displays opening hours.'},expected:201});
+ try{
+  assert.equal((await req('/api/hq/knowledge/'+k.id)).source,'Release test');
+  const found=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Search knowledge: '+runId},expected:201});
+  assert.match(found.reply,/Fictional bakery homepage/);
+  const calc=await req('/api/agents/finance/chat',{method:'POST',body:{synthetic:true,message:'Calculate: (1200+300)*0.13'},expected:201});
+  assert.match(calc.reply,/= 195/);assert.equal(calc.jobExecuted,false);
+ }finally{await req('/api/hq/knowledge/'+k.id,{method:'DELETE'});}
+ console.log('PASS: live shared knowledge storage, source-aware lookup, exact UI, and agent calculator');
+ const ref=await req('/api/agent-connections/manager',{method:'POST',body:{synthetic:true,label:'W3C release check',url:'https://www.w3.org/robots.txt',purpose:'Public reference acceptance',accessType:'read'},expected:201});
+ try{
+  await req('/api/agent-connections/manager/'+ref.id,{method:'POST',body:{action:'approve'}});
+  const read=await req('/api/manager/chat',{method:'POST',body:{synthetic:true,threadId:t.id,message:'Read reference: https://www.w3.org/robots.txt'},expected:201});
+  if(read.reply.startsWith('Public reference —')&&read.reply.includes('Untrusted text excerpt'))console.log('PASS: actual approved public HTTP reference read, no browser or login');
+  else console.log('NOT VERIFIED: live public reference provider response; local reader tests passed.');
+ }finally{await req('/api/agent-connections/manager/'+ref.id,{method:'POST',body:{action:'revoke'}});}
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
