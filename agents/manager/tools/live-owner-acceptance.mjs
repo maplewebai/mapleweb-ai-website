@@ -179,6 +179,15 @@ async function main(){
  const {createHash}=await import('node:crypto');assert.equal(createHash('sha256').update(new Uint8Array(await brand.arrayBuffer())).digest('hex'),'9a763352ae3b9aab2c396d0a42cc7f7072914f27da9e7bff2c932dcc67fc1f8d');
  const manifest=await req('/control.webmanifest',{auth:false});assert.equal(manifest.name,'AI Agents Headquarters');assert.equal(manifest.short_name,'AI Agents HQ');
  console.log('PASS: exact deployed AI Agents Headquarters name and approved logo bytes');
+ await req('/api/internal-mail/directory',{auth:false,expected:401});
+ const mailboxes=await req('/api/internal-mail/directory');
+ assert.ok(mailboxes.length>=9);
+ assert.equal(new Set(mailboxes.map(m=>m.address)).size,mailboxes.length);
+ assert.ok(mailboxes.every(m=>m.address.endsWith('@agents-hq.invalid')));
+ const inbox=await req('/api/internal-mail/manager');
+ assert.equal(inbox.externalDelivery,false);assert.ok(Array.isArray(inbox.inbox));assert.ok(Array.isArray(inbox.sent));
+ assert.ok(markup.includes('id="mailForm"'));assert.ok(markup.includes('id="mailInbox"'));
+ console.log('PASS: live owner-only internal mail directory, Manager inbox and exact UI. Internal delivery tested in local database and browser; no live Internet mail.');
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
