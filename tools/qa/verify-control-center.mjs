@@ -13,7 +13,7 @@ try{
     const response=await page.goto(URL,{waitUntil:'domcontentloaded',timeout:30000});
     assert.equal(response?.status(),200,'HTTPS shell must load');
     await assert.doesNotReject(page.locator('#signin').waitFor({state:'visible'}));
-    assert.match(await page.title(),/MapleWeb AI/);
+    assert.match(await page.title(),/AI Agents Headquarters|MapleWeb AI/);
     const unauth=await page.request.get('https://mapleweb-manager-v2-staging.reasdfghkj.workers.dev/api/status',{failOnStatusCode:false});
     assert.equal(unauth.status(),401,'Manager API requires authentication');
     await page.locator('#demo').click();
