@@ -31,3 +31,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Deploy removal of the app-level ten-message limit on the verified free plan. Preserve usage records with migration 0007, provider free-compute limits, owner approvals and rollback checks. Verify four-draft workflow and blocked publishing. No paid fallback or live customer operations.
 
 - 2026-11-25: Validate and deploy saved-project lookup and plain-English QA assignments for named existing websites. Verify project records, explicit owner approval, unchanged draft version, no publication and current no-paid-fallback AI configuration.
+
+- 2026-11-25: Validate and deploy the All agents Create Agent form, persistent custom profiles, private conversations, and attributed owner-approved tasks through existing workers. Apply migration 0008. Verify browser creation and execution in local QA and exact live directory and authentication. No additional external services, charges or publication.
