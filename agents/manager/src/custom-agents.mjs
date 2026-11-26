@@ -29,7 +29,7 @@ export async function customWorkspace(env,id){
  const tasks=(rows.results||[]).map(({input_json,...t})=>{const i=JSON.parse(input_json);return {...t,detail:i.description||i.sector||i.category||(i.tier?'Tier '+i.tier:null)}});
  const jobRows=await db.prepare("SELECT j.id,j.project_id,j.role,j.action,j.created_at,json_extract(j.result_json,'$.status') AS result_status FROM manager_custom_agent_tasks t JOIN manager_commands c ON c.id=t.command_id JOIN jobs j ON j.id=c.job_id WHERE t.agent_id=? ORDER BY j.created_at DESC LIMIT 30").bind(id).all();
  const pause=await db.prepare('SELECT paused FROM manager_role_controls WHERE role=?').bind(a.base_role).first();
- return {...view(a),role:a.base_role,paused:pause?.paused===1,tasks,jobs:jobRows.results||[],turns:(await chatHistory(env,id)).turns,mode:'staging',historyLimit:30};
+ return {...view(a),role:a.base_role,paused:pause?.paused===1||(await db.prepare('SELECT paused FROM manager_role_controls WHERE role=?').bind(a.id).first())?.paused===1,tasks,jobs:jobRows.results||[],turns:(await chatHistory(env,id)).turns,mode:'staging',historyLimit:30};
 }
 async function record(env,a,message,reply,extra={}){const createdAt=now(),kind='verified-record';await saveChatTurn(env,{message,reply,kind,createdAt,threadId:a.id});return {message,reply,kind,created_at:createdAt,jobExecuted:false,...extra};}
 export async function customTask(env,id,payload){
