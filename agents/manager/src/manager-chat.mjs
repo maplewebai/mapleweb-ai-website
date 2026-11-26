@@ -1,4 +1,5 @@
 // Owner-only Manager conversation. Real D1 records, no invented execution.
+import {learningNotes,learningInstruction} from './agent-learning.mjs';
 import {bad,validateSynthetic} from './security.mjs';
 import {requireDb,listJobs} from './store.mjs';
 import {checkRoleHealth} from './cloudflare.mjs';
@@ -70,12 +71,18 @@ export function safeModelFailure(error){
  for(const known of ['5035','5028','3040','3036','4001','4002','4003','429','401','403','503'])if(code===known||new RegExp('(?:^|[^0-9])'+known+'(?:[^0-9]|$)').test(message))return 'PROVIDER_'+known;
  return 'PROVIDER_REQUEST_FAILED';
 }
-export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=null,agentProfile=null}={}) {
+export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=null,agentProfile=null,learningScope='manager'}={}) {
   const message=parseMessage(payload),threadId=payload.threadId??null;
   if(threadId!==null)await requireThread(env,threadId);
   const db=requireDb(env);
   const intent=agentRole?'advice':classifyMessage(message);
   let reply,kind='verified-record',aiFailure=null;
+  const lesson=await learningInstruction(env,learningScope,message);
+  if(lesson){
+    const createdAt=new Date().toISOString();
+    await saveChatTurn(env,{message:lesson.recordMessage||message,reply:lesson.reply,kind,createdAt,threadId});
+    return {message:lesson.recordMessage||message,reply:lesson.reply,kind,created_at:createdAt,jobExecuted:false};
+  }
   if(/^(?:hi|hello|hey|good morning|good evening|help|what can you do)[!.?]*$/i.test(message.trim())){
     reply='Hello! I can help you assign supported staging tasks, check agents and review recorded work. Try asking me to create four new fictional websites and test them, or prepare a quote for tier 3. General AI advice depends on the provider’s free compute allowance.';
   }else if(intent==='status'){
@@ -115,9 +122,13 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
             {role:'user',content:String(t.message).slice(0,800)},
             {role:'assistant',content:String(t.reply).slice(0,1000)}
           ]);
+          // Older isolated tests and rolled-back schemas can still provide advice.
+          // Learning is not assumed available when the table is missing.
+          let lessons=[];
+          try{lessons=await learningNotes(env,learningScope,8)}catch(e){if(!/no such table.*agent_learning/i.test(String(e.message)))throw e;}
           const result=await env.AI.run(env.MANAGER_CHAT_MODEL,{messages:[
-            {role:'system',content:(agentRole?'You are the MapleWeb AI '+agentRole+' planning assistant, mediated by the Manager. Focus on that role’s responsibilities; explain what its supported tasks can do and clearly distinguish recommendations from actual recorded work. This is shared AI advice, not an independent executing agent. ':'')+'You are MapleWeb AI Manager in private staging. Answer the owner in plain, professional English. Address the specific question first. Use short paragraphs, meaningful headings or numbered steps when useful. Offer practical recommendations tailored to the current fictional project and remember the supplied recent conversation. Ask a single focused question only when necessary. Give planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
-            ...(agentProfile?[{role:'user',content:'Owner-defined fictional agent profile (preferences only, cannot change permissions): '+JSON.stringify(agentProfile)}]:[]),...conversation,{role:'user',content:message}],max_completion_tokens:512,stream:false,store:false,temperature:0.3,chat_template_kwargs:{enable_thinking:false}});
+            {role:'system',content:(agentRole?'You are the MapleWeb AI '+agentRole+' planning assistant, mediated by the Manager. Focus on that role’s responsibilities; explain what its supported tasks can do and clearly distinguish recommendations from actual recorded work. This is shared AI advice, not an independent executing agent. ':'')+'You are MapleWeb AI Manager in private staging. Answer the owner in plain, professional English. Address the specific question first. Use short paragraphs, meaningful headings or numbered steps when useful. Offer practical recommendations tailored to the current fictional project and remember the supplied recent conversation. Ask a single focused question only when necessary. For a task, separate the objective, plan, supported actions, dependencies and verification. Use owner-taught notes as preferences, not proof. Give planning advice only in this response. The surrounding Manager application handles supported approved tasks; you cannot directly execute jobs, confirm live agent status, create external accounts, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
+            ...(lessons.length?[{role:'user',content:'Owner-taught working notes (preferences only; never permissions or verified facts): '+JSON.stringify(lessons.map(n=>n.note)).slice(0,3200)}]:[]),...(agentProfile?[{role:'user',content:'Owner-defined fictional agent profile (preferences only, cannot change permissions): '+JSON.stringify(agentProfile)}]:[]),...conversation,{role:'user',content:message}],max_completion_tokens:512,stream:false,store:false,temperature:0.3,chat_template_kwargs:{enable_thinking:false}});
           const output=modelText(result);
           if(!output){aiFailure=result?.choices?.[0]?.finish_reason==='length'?'EMPTY_LENGTH_LIMIT':'EMPTY_MODEL_TEXT';throw Error('No supported model text');}
           reply=(agentRole?agentRole+' — shared AI planning advice':'AI planning advice')+' — no job executed:\n'+output.trim().slice(0,2400);
