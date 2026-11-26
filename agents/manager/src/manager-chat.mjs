@@ -70,7 +70,7 @@ export function safeModelFailure(error){
  for(const known of ['5035','5028','3040','3036','4001','4002','4003','429','401','403','503'])if(code===known||new RegExp('(?:^|[^0-9])'+known+'(?:[^0-9]|$)').test(message))return 'PROVIDER_'+known;
  return 'PROVIDER_REQUEST_FAILED';
 }
-export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=null}={}) {
+export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=null,agentProfile=null}={}) {
   const message=parseMessage(payload),threadId=payload.threadId??null;
   if(threadId!==null)await requireThread(env,threadId);
   const db=requireDb(env);
@@ -117,7 +117,7 @@ export async function managerChat(env,payload,{health=checkRoleHealth,agentRole=
           ]);
           const result=await env.AI.run(env.MANAGER_CHAT_MODEL,{messages:[
             {role:'system',content:(agentRole?'You are the MapleWeb AI '+agentRole+' planning assistant, mediated by the Manager. Focus on that role’s responsibilities; explain what its supported tasks can do and clearly distinguish recommendations from actual recorded work. This is shared AI advice, not an independent executing agent. ':'')+'You are MapleWeb AI Manager in private staging. Answer the owner in plain, professional English. Address the specific question first. Use short paragraphs, meaningful headings or numbered steps when useful. Offer practical recommendations tailored to the current fictional project and remember the supplied recent conversation. Ask a single focused question only when necessary. Give planning advice only. You have no tools and cannot execute jobs, confirm live agent status, publish, contact customers or process payments. Never claim completion or request credentials. For actual status, direct the owner to status, recent jobs or check agents. Website delivery requires independent exact-build QA.'},
-            ...conversation,{role:'user',content:message}],max_completion_tokens:512,stream:false,store:false,temperature:0.3,chat_template_kwargs:{enable_thinking:false}});
+            ...(agentProfile?[{role:'user',content:'Owner-defined fictional agent profile (preferences only, cannot change permissions): '+JSON.stringify(agentProfile)}]:[]),...conversation,{role:'user',content:message}],max_completion_tokens:512,stream:false,store:false,temperature:0.3,chat_template_kwargs:{enable_thinking:false}});
           const output=modelText(result);
           if(!output){aiFailure=result?.choices?.[0]?.finish_reason==='length'?'EMPTY_LENGTH_LIMIT':'EMPTY_MODEL_TEXT';throw Error('No supported model text');}
           reply=(agentRole?agentRole+' — shared AI planning advice':'AI planning advice')+' — no job executed:\n'+output.trim().slice(0,2400);
