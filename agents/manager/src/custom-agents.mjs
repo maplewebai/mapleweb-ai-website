@@ -4,7 +4,7 @@ import {requireDb} from './store.mjs';
 import {ROLES} from './roles.mjs';
 import {chatHistory,saveChatTurn,managerChat,parseMessage} from './manager-chat.mjs';
 import {buildAgentCommand} from './agent-workspace.mjs';
-import {proposeCommand} from './manager-commands.mjs';
+import {parseCommand,interpretOwnerTask,resolveProjectRequest,proposeCommand} from './manager-commands.mjs';
 const actions={'website-developer':'build-draft','quality-checker':'review','customer-care':'intake','sales':'quote','research':'plan','support':'triage','finance':'status','publishing':'readiness'};
 const now=()=>new Date().toISOString();
 function dbFor(env){if(env.MANAGER_THREADS_ENABLED!=='true'||env.MANAGER_COMMANDS_ENABLED!=='true')throw bad('Custom agent workspaces unavailable',503);return requireDb(env);}
@@ -43,6 +43,14 @@ export async function customMessage(env,id,payload){
  const message=parseMessage(payload);await thread(env,a);
  if(/^(?:status|tasks|show tasks|what are you doing|what have you done|check status|recent jobs)[.!?]*$/i.test(message)){
  const ws=await customWorkspace(env,id);return record(env,a,message,a.name+' — '+(a.base_role==='chat-only'?'Chat-only profile.':'Uses '+a.base_role+' worker. New tasks '+(ws.paused?'paused':'allowed')+'.')+'\nSaved assignments:\n'+(ws.tasks.map(t=>t.project_id+' / '+t.state+(t.result_status?' — '+t.result_status:'')).join('\n')||'None')+'\nThese are saved records, not independent background activity.');
+ }
+ const exact=parseCommand(message), natural=exact?null:(await resolveProjectRequest(env,message)||interpretOwnerTask(message));
+ const command=exact||natural?.command;
+ if(natural?.reply)return record(env,a,message,natural.reply);
+ if(command){
+   if(a.base_role==='chat-only'||command.role!==a.base_role)return record(env,a,message,'This profile does not have that executable task capability. Use the appropriate agent or the Manager. No task was started.');
+   const proposal=await proposeCommand(env,command,{customAgentId:id});
+   return record(env,a,message,'Task saved for owner approval. '+(natural?.scope||'Uses the selected existing worker.')+' Nothing has run yet.',{proposal});
  }
  return managerChat(env,{synthetic:true,message,threadId:id},{agentRole:a.base_role,agentProfile:{name:a.name,description:a.description,instructions:a.instructions}});
 }
