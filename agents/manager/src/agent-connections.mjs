@@ -28,7 +28,17 @@ export async function requestConnection(env,id,p){
  if(w.meta?.changes!==1)throw bad('Connection request limit reached',409);
  return {id:cid,state:'REQUESTED',externalAction:false};
 }
-export async function connectionAction(env,id,cid,p,{diagnose=diagnoseGitHub}={}){
+// Public reference pages only. No user-defined host, redirects, cookies or credentials.
+const PUBLIC_DOC_HOSTS=new Set(['docs.github.com','developers.cloudflare.com','developer.mozilla.org','www.w3.org','support.google.com']);
+export async function verifyPublicReference(url,fetcher=fetch){
+ const u=new URL(website(url));
+ if(!PUBLIC_DOC_HOSTS.has(u.hostname))throw bad('Public reference host is not supported');
+ const response=await fetcher(u.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(10000),headers:{accept:'text/html,text/plain'}});
+ const type=(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+ if(response.body)await response.body.cancel();
+ return response.ok&&['text/html','text/plain'].includes(type);
+}
+export async function connectionAction(env,id,cid,p,{diagnose=diagnoseGitHub,fetcher=fetch}={}){
  const key=await scope(env,id),db=requireDb(env);
  if(!p||Object.keys(p).length!==1||!['approve','revoke','verify'].includes(p.action))throw bad('Invalid connection action');
  const row=await db.prepare('SELECT * FROM agent_connections WHERE id=? AND agent_scope=?').bind(cid,key).first();if(!row)throw bad('Connection not found',404);
@@ -41,6 +51,8 @@ export async function connectionAction(env,id,cid,p,{diagnose=diagnoseGitHub}={}
    const u=new URL(row.url);
    if(u.hostname==='github.com'&&['/','/maplewebai/mapleweb-ai-website','/maplewebai/mapleweb-ai-website/'].includes(u.pathname)&&row.access_type!=='new-account'){
      try{const g=await diagnose(env);if(g.configured&&g.authenticatedReadVerified&&g.branchFound){state='VERIFIED_READ';result='Manager GitHub adapter verified read access to its fixed development repository. No independent account or write access granted.';}else{state='APPROVED';result='GitHub Manager credential is not connected or read access was not verified.';}}catch{state='APPROVED';result='GitHub read verification failed. No connection claimed.';}
+   }else if(row.access_type==='read'&&PUBLIC_DOC_HOSTS.has(u.hostname)){
+     try{const verified=await verifyPublicReference(row.url,fetcher);state=verified?'VERIFIED_READ':'APPROVED';result=verified?'Public documentation page read verified. No login, account creation or private data access.':'Public page read was not verified.';}catch{state='APPROVED';result='Public page read failed; no connection claimed.';}
    }else{state='APPROVED';result='This service has no live adapter in MapleWeb. Owner may open the site to sign in or register. No external account created.';}
  }
  const w=await db.prepare('UPDATE agent_connections SET state=?,result=?,updated_at=? WHERE id=? AND agent_scope=? AND state=? AND updated_at=?').bind(state,result,now(),cid,key,row.state,row.updated_at).run();
