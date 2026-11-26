@@ -6,7 +6,8 @@ test('mobile install metadata is first-party and never includes owner data',asyn
  const r=await worker.fetch(new Request('https://staging.test/control.webmanifest'),{});
  assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');
  const m=await r.json();assert.equal(m.name,'AI Agents Headquarters');assert.equal(m.short_name,'AI Agents HQ');assert.equal(m.start_url,'/control');assert.equal(m.display,'standalone');
- assert.equal(m.icons[0].src,'/control-icon.svg');
+ assert.equal(m.icons[0].src,'/ai-agents-hq-icon.svg');
+ const icon=await worker.fetch(new Request('https://staging.test/ai-agents-hq-icon.svg'),{});assert.equal(icon.status,200);assert.equal(icon.headers.get('content-type'),'image/svg+xml');assert.match(await icon.text(),/data:image\/webp;base64,/);
  const sw=await worker.fetch(new Request('https://staging.test/control-sw.js'),{});
  assert.equal(sw.status,200);assert.doesNotMatch(await sw.text(),/caches\.|respondWith/);
 });
