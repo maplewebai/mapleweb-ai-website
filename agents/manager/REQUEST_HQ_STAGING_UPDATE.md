@@ -53,3 +53,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - Add Manager supervision directory, direct explicit owner-authorized internal delegation, named custom agent assignments, pause/resume controls, chat-only inbox assignment with truthful status, and live remote research verification. Preserve staging, free plan, publication and payment guards.
 
 - Correct old unit-test fixture to include existing custom agent schema required for individual pause enforcement; repeat unchanged safety assertions and full deployment acceptance.
+
+- HQ intelligence upgrade: shared owner-curated knowledge retrieval and provenance for all agent chats, bounded calculator, approved fixed-host HTTP reference text reader, capability report and mobile knowledge management. Preserve existing Manager and eight remote staging workers, no new subscriptions, browser claims, arbitrary computation, external email, model training or publication. Require local and live acceptance.
