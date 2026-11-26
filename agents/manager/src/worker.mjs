@@ -26,6 +26,7 @@ import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,own
 import {listCustomAgents,createCustomAgent,customWorkspace,customMessage,customTask} from './custom-agents.mjs';
 import {agentWorkspace,agentMessage,agentTask} from './agent-workspace.mjs';
 import {serveControlCenter} from './control-center.mjs';
+import {connections,requestConnection,connectionAction} from './agent-connections.mjs';
 import {controlAsset} from './control-install.mjs';
 import {managerChat,chatHistory,parseMessage,saveChatTurn,managerModelReadiness,managerQuota} from './manager-chat.mjs';
 import {requireThread,listThreads,createThread,addThreadFile,listThreadFiles,readThreadFile,deleteThreadFile} from './manager-threads.mjs';
@@ -56,6 +57,14 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  const connectionPath=path.match(/^\/api\/agent-connections\/([a-z0-9-]{1,36})(?:\/([a-f0-9-]{36}))?$/);
+  if(connectionPath){
+    const [,scope,cid]=connectionPath;
+    if(!cid&&request.method==='GET')return json(await connections(env,scope));
+    if(!cid&&request.method==='POST')return json(await requestConnection(env,scope,await readJson(request,3000)),201);
+    if(cid&&request.method==='POST')return json(await connectionAction(env,scope,cid,await readJson(request,300)));
+    return methodError();
+  }
   if(path==='/api/custom-agents'&&request.method==='GET')return json(await listCustomAgents(env));
   if(path==='/api/custom-agents'&&request.method==='POST')return json(await createCustomAgent(env,await readJson(request,7000)),201);
   const customPath=path.match(/^\/api\/custom-agents\/([0-9a-f-]{36})\/(workspace|chat|tasks)$/);
