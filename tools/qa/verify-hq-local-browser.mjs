@@ -52,6 +52,9 @@ try{
   try{
     await page.goto(origin+'/control');
     await visible('#signin');
+    assert.equal(await page.title(),'AI Agents Headquarters');
+    await page.waitForFunction(()=>document.querySelector('.hqSigninBrand')?.naturalWidth===192);
+
     const anon=await page.evaluate(async()=> (await fetch('/api/manager/chat')).status);
     assert.equal(anon,401);
     await page.locator('#secret').fill(token);
