@@ -37,3 +37,5 @@ Free-plan verification passed and all eight live roles passed. AI returned unava
 - 2026-11-25: Validate and deploy owner-taught learning notes, isolated per-agent recall, task planning and natural-language routing to existing approved workers. Apply migration 0009. External account creation remains unconnected; no paid services or customer publication.
 
 - 2026-11-25: Verify and deploy private per-agent connection requests, owner approval/revocation, existing GitHub read diagnostics, selected public-documentation HTTP checks, and scoped past-work learning. Apply migration 0010. No external account creation, paid services, customer publication or arbitrary browser automation enabled.
+
+- 2026-11-25: Validate and deploy shared read-only Browser Run access for all existing and custom agents. Require current confirmed free plan, exact approved public URL, clean session, no redirects, no credentials, and a successful actual public page acceptance test. No paid fallback, third-party account creation, private login or external changes.
