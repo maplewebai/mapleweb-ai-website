@@ -96,7 +96,7 @@ jobs:
           fi
           export HQ_AI_ENABLED="$ai_enabled"
           browser_enabled=false
-          if [ "$subscription_status" = 200 ] && [ "$ai_enabled" = true ]; then browser_enabled=true; fi
+          # Previous actual browser read failed with HTTP 503. Keep disabled until a separately verified provider setup is available.
           export HQ_BROWSER_ENABLED="$browser_enabled"
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
