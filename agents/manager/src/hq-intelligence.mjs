@@ -55,13 +55,13 @@ export function calculate(expression){
  return Number(result.toPrecision(14));
 }
 export function capabilityReport(env){
- return {model:env.MANAGER_CHAT_MODEL||null,modelConfigured:typeof env.AI?.run==='function'&&env.MANAGER_CHAT_FREE_CONFIRMED==='true'&&env.MANAGER_CHAT_AI_ENABLED==='true',knowledge:'OWNER_CURATED_RETRIEVAL',memory:'PERSISTENT_AGENT_NOTES_AND_WORK_OUTCOMES',tools:['calculator','knowledge lookup','agent status','internal mail','approved staging jobs'],taskExecution:'ALLOWLISTED_REMOTE_STAGING',browser:'NOT_VERIFIED',virtualComputer:'NOT_CONNECTED',externalEmail:'NOT_CONNECTED',modelTraining:'NOT_PERFORMED',paidFallback:false,publishing:false};
+ return {model:env.MANAGER_CHAT_MODEL||null,modelConfigured:typeof env.AI?.run==='function'&&env.MANAGER_CHAT_FREE_CONFIRMED==='true'&&env.MANAGER_CHAT_AI_ENABLED==='true',knowledge:'OWNER_CURATED_RETRIEVAL',memory:'PERSISTENT_AGENT_NOTES_AND_WORK_OUTCOMES',tools:['calculator','knowledge lookup','approved public documentation reader','agent status','internal mail','approved staging jobs'],taskExecution:'ALLOWLISTED_REMOTE_STAGING',browser:'NOT_VERIFIED',virtualComputer:'NOT_CONNECTED',externalEmail:'NOT_CONNECTED',modelTraining:'NOT_PERFORMED',paidFallback:false,publishing:false};
 }
 export async function intelligenceInstruction(env,message){
  const m=message.trim();
  if(/^(?:show (?:hq |system )?capabilities|what tools are available)[?.!]*$/i.test(m)){
   const c=capabilityReport(env);
-  return {reply:'HQ intelligence and tools:\nModel: '+(c.modelConfigured?c.model+' (configured; actual inference subject to provider quota)':'not configured')+'\nShared knowledge library, persistent agent notes, work outcomes, calculator, internal mail and supported remote staging jobs.\nGeneral web browser, virtual computer and external email are not verified or connected. No model retraining, paid fallback or publication.'};
+  return {reply:'HQ intelligence and tools:\nModel: '+(c.modelConfigured?c.model+' (configured; actual inference subject to provider quota)':'not configured')+'\nShared knowledge library, persistent agent notes, work outcomes, calculator, approved public documentation reader (HTTP only), internal mail and supported remote staging jobs.\nGeneral web browser, virtual computer and external email are not verified or connected. No model retraining, paid fallback or publication.'};
  }
  const calc=m.match(/^calculate:\s*(.+)$/i);
  if(calc)return {reply:'Calculator result: '+calc[1]+' = '+calculate(calc[1])};
