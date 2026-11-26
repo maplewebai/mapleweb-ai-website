@@ -218,7 +218,7 @@ try{
 
     assert.equal(await page.locator('#agents').isVisible(),false);
     await click('#managerMore');
-    await click('.chatHistoryPanel summary');
+    await click('.chatHistoryPanel:not(#hqKnowledgePanel) summary');
     await visible('#newThread');
     page.once('dialog',d=>d.accept('Local QA conversation'));
     await click('#newThread');
@@ -229,6 +229,21 @@ try{
     await text('#fileList','brief.txt');
     await page.locator('#fileList').getByRole('button',{name:'Read',exact:true}).click();
     await text('#fileContent','Fictional test brief');
+    await click('#hqKnowledgePanel summary');
+    await text('#hqKnowledgeStatus','shared knowledge entries');
+    await page.locator('#hqKnowledgeTitle').fill('Fictional bakery guidance');
+    await page.locator('#hqKnowledgeSource').fill('Owner test');
+    await page.locator('#hqKnowledgeBody').fill('Show fictional opening hours on the homepage.');
+    await click('#hqKnowledgeSave');
+    await text('#hqKnowledgeList','Fictional bakery guidance');
+    await page.locator('#hqKnowledgeList').getByRole('button',{name:'Read',exact:true}).click();
+    await text('#hqKnowledgeList','Show fictional opening hours');
+    const knowledgeLayout=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
+    assert.ok(knowledgeLayout.scroll<=knowledgeLayout.width+1,'Knowledge layout overflow '+JSON.stringify(knowledgeLayout));
+    page.once('dialog',d=>d.accept());
+    await page.locator('#hqKnowledgeList').getByRole('button',{name:'Remove',exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('#hqKnowledgeList').textContent.includes('Fictional bakery guidance'));
+    await click('#hqKnowledgePanel summary');
     if(width<=900)await click('#managerMenu');
     await click('[data-tab="business"]');
     await text('#businessStatus','Actual private case records loaded');
