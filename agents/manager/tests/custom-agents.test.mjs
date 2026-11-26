@@ -39,3 +39,26 @@ test('chat-only profiles cannot execute tasks; no external account creation',asy
  assert.equal(turn.proposal,undefined);assert.match(turn.reply,/does not have/);
  await assert.rejects(createCustomAgent(env,payload('Invalid role','unrestricted')),/supported task type/);
 });
+
+test('learning persists across chats, stays isolated, informs advice and never creates accounts',async t=>{
+ const env=setup(t),a=await createCustomAgent(env,payload('Learning A','chat-only')),b=await createCustomAgent(env,payload('Learning B','chat-only'));
+ const say=(id,message)=>customMessage(env,id,{synthetic:true,message});
+ const saved=await say(a.id,'Remember: Prefer concise fictional design reports.');
+ assert.match(saved.reply,/Lesson saved/);assert.equal(saved.jobExecuted,false);
+ assert.match((await say(a.id,'Show learning')).reply,/Prefer concise fictional design reports/);
+ assert.match((await say(b.id,'Show learning')).reply,/No saved lessons/);
+ const {learningNotes,learningInstruction}=await import('../src/agent-learning.mjs');
+ const notes=await learningNotes(env,'custom:'+a.id);assert.equal(notes.length,1);
+ let prompts=[];
+ env.MANAGER_CHAT_MODEL='@cf/google/gemma-4-26b-a4b-it';env.MANAGER_CHAT_AI_ENABLED='true';env.MANAGER_CHAT_FREE_CONFIRMED='true';
+ env.AI={run:async(model,body)=>{prompts.push(body.messages);return {response:'A concise plan.'}}};
+ await say(a.id,'Suggest a fictional business layout');
+ await say(b.id,'Suggest a fictional business layout');
+ assert.match(JSON.stringify(prompts[0]),/Prefer concise fictional design reports/);
+ assert.doesNotMatch(JSON.stringify(prompts[1]),/Prefer concise fictional design reports/);
+ await learningInstruction(env,'custom:'+a.id,'forget '+notes[0].id);
+ assert.equal((await learningNotes(env,'custom:'+a.id)).length,0);
+ const account=await say(a.id,'Create an account for fictional research');
+ assert.match(account.reply,/External account creation is not connected/);assert.equal(account.jobExecuted,false);assert.equal(prompts.length,2);
+ assert.equal((await customWorkspace(env,a.id)).tasks.length,0);
+});
