@@ -164,8 +164,15 @@ async function main(){
    }finally{await req('/api/agent-connections/manager/'+conn.id,{method:'POST',body:{action:'revoke'}});}
  }else{
    assert.equal(browser.enabled,false);
-   console.log('NOT VERIFIED: browser provider free plan not confirmed; browser remains disabled.');
+   console.log('NOT VERIFIED: browser remains disabled pending successful provider validation.');
  }
+ await req('/api/infrastructure',{auth:false,expected:401});
+ const cloud=await req('/api/infrastructure');
+ assert.ok(Array.isArray(cloud.domains));assert.ok(Array.isArray(cloud.emails));
+ assert.equal(cloud.provider.emailRoutingEnabled,false);assert.equal(cloud.provider.inboxEnabled,false);
+ assert.equal(cloud.paidServicesEnabled,false);
+ assert.ok(markup.includes('id="cloudDomainForm"'));assert.ok(markup.includes('id="cloudEmailForm"'));
+ console.log('PASS: exact deployed Cloud and Email dashboard and owner-only planning records. No live email provisioning.');
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
