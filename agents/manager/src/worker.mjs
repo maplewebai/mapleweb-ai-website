@@ -24,6 +24,7 @@ import {fictionalKimiBriefReadiness} from './kimi-planning-brief.mjs';
 import {fictionalQualityReport} from './fictional-quality-report.mjs';
 import {WEBSITE_DELIVERY_POLICY,deliveryPolicyForProject,strictOwnerDelivery,ownerJobResult} from './website-delivery-policy.mjs';
 import {listCustomAgents,createCustomAgent,customWorkspace,customMessage,customTask} from './custom-agents.mjs';
+import {knowledgeList,addKnowledge,readKnowledge,deleteKnowledge,capabilityReport} from './hq-intelligence.mjs';
 import {supervisionDirectory,supervisorInstruction} from './manager-supervision.mjs';
 import {agentWorkspace,agentMessage,agentTask} from './agent-workspace.mjs';
 import {serveControlCenter} from './control-center.mjs';
@@ -60,6 +61,12 @@ export async function handle(request,env,callingFetchImpl=fetch){
   if(path==='/api/payments/test-webhook'&&request.method==='POST')
     return json(await receiveStripeTestWebhook(env,request));
   await requireOwner(request,env);
+  if(path==='/api/hq/capabilities'&&request.method==='GET')return json(capabilityReport(env));
+  if(path==='/api/hq/knowledge'&&request.method==='GET')return json(await knowledgeList(env));
+  if(path==='/api/hq/knowledge'&&request.method==='POST')return json(await addKnowledge(env,await readJson(request,20000)),201);
+  const knowledgePath=path.match(/^\/api\/hq\/knowledge\/([a-f0-9-]{36})$/);
+  if(knowledgePath&&request.method==='GET')return json(await readKnowledge(env,knowledgePath[1]));
+  if(knowledgePath&&request.method==='DELETE')return json(await deleteKnowledge(env,knowledgePath[1]));
   if(path==='/api/internal-mail/directory'&&request.method==='GET')return json(await mailDirectory(env));
   if(path==='/api/internal-mail/send'&&request.method==='POST')return json(await sendInternalMail(env,await readJson(request,10000)),201);
   const mailPath=path.match(/^\/api\/internal-mail\/([a-z0-9-]{1,36})(?:\/([a-f0-9-]{36})\/read)?$/);
