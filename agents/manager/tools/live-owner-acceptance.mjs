@@ -173,6 +173,12 @@ async function main(){
  assert.equal(cloud.paidServicesEnabled,false);
  assert.ok(markup.includes('id="cloudDomainForm"'));assert.ok(markup.includes('id="cloudEmailForm"'));
  console.log('PASS: exact deployed Cloud and Email dashboard and owner-only planning records. No live email provisioning.');
+ assert.ok(markup.includes('<title>AI Agents Headquarters</title>'));assert.ok(markup.includes('src="/hq-brand.webp"'));
+ const brand=await fetch(base+'/hq-brand.webp',{signal:AbortSignal.timeout(15000)});
+ assert.equal(brand.status,200);assert.equal(brand.headers.get('X-MapleWeb-Build'),expectedBuild);assert.equal(brand.headers.get('content-type'),'image/webp');
+ const {createHash}=await import('node:crypto');assert.equal(createHash('sha256').update(new Uint8Array(await brand.arrayBuffer())).digest('hex'),'9a763352ae3b9aab2c396d0a42cc7f7072914f27da9e7bff2c932dcc67fc1f8d');
+ const manifest=await req('/control.webmanifest',{auth:false});assert.equal(manifest.name,'AI Agents Headquarters');assert.equal(manifest.short_name,'AI Agents HQ');
+ console.log('PASS: exact deployed AI Agents Headquarters name and approved logo bytes');
  const model=await req('/api/manager/model');
  assert.equal(model.paidFallback,false);assert.equal(model.dailyRequestCap,null);
  if(process.env.MAPLEWEB_AI_TEST_AUTHORIZED==='true'){
