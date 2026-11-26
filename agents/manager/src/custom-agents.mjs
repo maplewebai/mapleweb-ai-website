@@ -52,5 +52,5 @@ export async function customMessage(env,id,payload){
    const proposal=await proposeCommand(env,command,{customAgentId:id});
    return record(env,a,message,'Task saved for owner approval. '+(natural?.scope||'Uses the selected existing worker.')+' Nothing has run yet.',{proposal});
  }
- return managerChat(env,{synthetic:true,message,threadId:id},{agentRole:a.base_role,agentProfile:{name:a.name,description:a.description,instructions:a.instructions}});
+ return managerChat(env,{synthetic:true,message,threadId:id},{agentRole:a.base_role,agentProfile:{name:a.name,description:a.description,instructions:a.instructions},learningScope:'custom:'+id});
 }
