@@ -52,8 +52,7 @@ export async function agentMessage(env,role,payload){
  // Advice uses the existing shared quota and isolated role history. No tools.
  return managerChat(env,{synthetic:true,message,threadId:id},{agentRole:role});
 }
-export async function agentTask(env,role,payload){
- context(env,role);
+export function buildAgentCommand(role,payload){
  validateSynthetic(payload);
  if(Object.keys(payload).some(k=>!['synthetic','projectId','detail'].includes(k))||typeof payload.projectId!=='string'||typeof (payload.detail??'')!=='string')throw bad('Invalid task');
  const projectId=payload.projectId.trim().toUpperCase();
@@ -69,6 +68,11 @@ export async function agentTask(env,role,payload){
    else throw bad('This action uses the saved project or fixed staging inputs; leave details empty');
  }
  validateSynthetic({synthetic:true,input:command.input});
+ return {command,projectId,detail};
+}
+export async function agentTask(env,role,payload){
+ context(env,role);
+ const {command,projectId,detail}=buildAgentCommand(role,payload);
  const {id}=await ensureThread(env,role);
  const proposal=await proposeCommand(env,command);
  return record(env,id,'Assign '+command.action+' for '+projectId+(detail?' — '+detail:''),'Task saved for owner approval. Nothing has been executed.',{proposal});
